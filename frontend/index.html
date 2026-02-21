@@ -1,0 +1,1979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DataLens — Intelligent Data Dictionary Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:       #05050e;
+  --ink2:      #0a0a1a;
+  --ink3:      #0f0f24;
+  --panel:     #111128;
+  --surface:   #161632;
+  --lift:      #1c1c42;
+  --border:    rgba(120,120,200,0.12);
+  --borderhi:  rgba(120,120,200,0.28);
+  --cyan:      #00d4ff;
+  --cyan-dim:  rgba(0,212,255,0.1);
+  --cyan-glow: rgba(0,212,255,0.35);
+  --mint:      #00ffa3;
+  --mint-dim:  rgba(0,255,163,0.1);
+  --amber:     #ffb038;
+  --amber-dim: rgba(255,176,56,0.12);
+  --coral:     #ff5f7e;
+  --coral-dim: rgba(255,95,126,0.12);
+  --violet:    #9b6dff;
+  --violet-dim:rgba(155,109,255,0.12);
+  --txt:       #dde0f0;
+  --txt2:      #7e82a8;
+  --txt3:      #3a3d5c;
+  --mono:      'DM Mono', monospace;
+  --serif:     'Instrument Serif', serif;
+  --sans:      'Bricolage Grotesque', sans-serif;
+  --r:         10px;
+}
+
+/* ── Light theme ── */
+[data-theme="light"]{
+  --ink:        #f0f2fa;
+  --ink2:       #e8eaf5;
+  --ink3:       #dde0ef;
+  --panel:      #ffffff;
+  --surface:    #f4f5fc;
+  --lift:       #eceef8;
+  --border:     rgba(80,80,180,0.13);
+  --borderhi:   rgba(80,80,180,0.26);
+  --cyan:       #0077aa;
+  --cyan-dim:   rgba(0,119,170,0.1);
+  --cyan-glow:  rgba(0,119,170,0.28);
+  --mint:       #00885a;
+  --mint-dim:   rgba(0,136,90,0.1);
+  --amber:      #b87200;
+  --amber-dim:  rgba(184,114,0,0.1);
+  --coral:      #cc3355;
+  --coral-dim:  rgba(204,51,85,0.1);
+  --violet:     #6633cc;
+  --violet-dim: rgba(102,51,204,0.1);
+  --txt:        #12152a;
+  --txt2:       #464a72;
+  --txt3:       #9096bc;
+}
+
+/* ── Smooth global theme transition ── */
+body, body *{transition:background-color 0.32s ease, background 0.32s ease, color 0.26s ease, border-color 0.26s ease, box-shadow 0.26s ease !important;}
+/* Opt-out elements that must stay snappy */
+.cbar-fill{transition:width 0.6s ease !important;}
+.dot,.dot-green,.dot-gray{transition:none !important;}
+svg *,.lineage-node circle,.heat-cell{transition:none !important;}
+
+/* ── Theme toggle pill ── */
+.theme-toggle{
+  position:relative;
+  width:40px;height:22px;
+  background:var(--lift);
+  border:1px solid var(--border);
+  border-radius:11px;
+  cursor:pointer;
+  flex-shrink:0;
+  display:flex;align-items:center;
+  padding:0 3px;
+}
+.theme-toggle-thumb{
+  width:16px;height:16px;
+  border-radius:50%;
+  background:linear-gradient(135deg,var(--cyan),var(--violet));
+  box-shadow:0 0 8px var(--cyan-glow);
+  transform:translateX(0);
+  transition:transform 0.34s cubic-bezier(0.34,1.56,0.64,1) !important;
+  flex-shrink:0;
+}
+[data-theme="light"] .theme-toggle-thumb{transform:translateX(18px);}
+.theme-toggle-icon{
+  position:absolute;font-size:9px;pointer-events:none;
+  transition:opacity 0.2s !important;
+}
+.icon-moon{right:5px;opacity:1;}
+.icon-sun{left:5px;opacity:0;}
+[data-theme="light"] .icon-moon{opacity:0;}
+[data-theme="light"] .icon-sun{opacity:1;}
+
+body{font-family:var(--mono);background:var(--ink);color:var(--txt);height:100vh;overflow:hidden;font-size:13px;cursor:default}
+/* Noise overlay */
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:1000;opacity:0.6}
+/* Scrollbars */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--borderhi);border-radius:2px}
+/* Layout */
+.app{display:flex;height:100vh;flex-direction:column}
+/* ── Topbar ── */
+.topbar{
+  height:54px;min-height:54px;
+  background:var(--ink2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:0;
+  padding:0;position:relative;z-index:10;
+}
+.topbar-logo{
+  padding:0 24px;
+  display:flex;align-items:center;gap:10px;
+  border-right:1px solid var(--border);
+  height:100%;
+}
+.logo-mark{
+  width:28px;height:28px;
+  background:linear-gradient(135deg,var(--cyan),var(--violet));
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+  box-shadow:0 0 20px var(--cyan-glow);
+  flex-shrink:0;
+}
+.logo-text{font-family:var(--sans);font-size:16px;font-weight:700;letter-spacing:-0.5px}
+.logo-text em{font-style:normal;color:var(--cyan)}
+.topbar-db{
+  padding:0 20px;height:100%;
+  display:flex;align-items:center;gap:10px;
+  border-right:1px solid var(--border);
+  font-size:12px;
+}
+.db-pill{
+  background:var(--surface);border:1px solid var(--borderhi);
+  border-radius:20px;padding:3px 10px;
+  font-size:11px;color:var(--txt2);
+  display:flex;align-items:center;gap:5px;
+}
+.db-pill span{color:var(--cyan)}
+.search-bar{
+  flex:1;padding:0 16px;height:100%;
+  display:flex;align-items:center;
+}
+.search-input{
+  width:100%;max-width:400px;
+  background:var(--ink3);
+  border:1px solid var(--border);
+  border-radius:20px;
+  color:var(--txt);font-family:var(--mono);font-size:12px;
+  padding:6px 14px 6px 34px;
+  outline:none;transition:all 0.2s;
+  position:relative;
+}
+.search-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--cyan-dim)}
+.search-wrap{position:relative;width:100%;max-width:400px}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--txt3);font-size:12px;pointer-events:none}
+.topbar-right{
+  padding:0 20px;height:100%;
+  display:flex;align-items:center;gap:12px;
+  border-left:1px solid var(--border);
+  margin-left:auto;
+}
+.status-indicator{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--txt2)}
+.dot{width:6px;height:6px;border-radius:50%}
+.dot-green{background:var(--mint);box-shadow:0 0 8px var(--mint)}
+.dot-gray{background:var(--txt3)}
+@keyframes pulseAnim{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(0.85)}}
+.dot-green{animation:pulseAnim 2.5s infinite}
+.btn{
+  padding:7px 14px;border:none;border-radius:var(--r);
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  cursor:pointer;transition:all 0.15s;
+  display:inline-flex;align-items:center;gap:6px;
+  letter-spacing:0.2px;
+}
+.btn-cyan{background:var(--cyan);color:var(--ink);font-weight:600}
+.btn-cyan:hover{box-shadow:0 0 20px var(--cyan-glow);filter:brightness(1.1)}
+.btn-ghost{background:transparent;color:var(--txt2);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--borderhi);color:var(--txt);background:var(--surface)}
+.btn-sm{padding:5px 10px;font-size:10px}
+.btn:disabled{opacity:0.35;cursor:not-allowed}
+/* ── Main ── */
+.main{display:flex;flex:1;overflow:hidden}
+/* ── Sidebar ── */
+.sidebar{
+  width:224px;min-width:224px;
+  background:var(--ink2);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.nav-section{padding:14px 12px 6px}
+.nav-label{font-size:9px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--txt3);margin-bottom:8px;padding:0 4px}
+.nav-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px;border-radius:8px;
+  cursor:pointer;transition:all 0.15s;
+  font-size:12px;color:var(--txt2);
+  margin-bottom:2px;position:relative;
+}
+.nav-item:hover{background:var(--surface);color:var(--txt)}
+.nav-item.active{background:var(--cyan-dim);color:var(--cyan);font-weight:500}
+.nav-item.active::before{content:'';position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:60%;background:var(--cyan);border-radius:0 2px 2px 0;box-shadow:0 0 8px var(--cyan-glow)}
+.nav-icon{font-size:13px;width:18px;text-align:center}
+.nav-badge{margin-left:auto;font-size:9px;padding:2px 5px;border-radius:4px;background:var(--coral-dim);color:var(--coral)}
+.nav-badge.green{background:var(--mint-dim);color:var(--mint)}
+.tables-section{flex:1;overflow-y:auto;padding:8px 12px}
+.table-item{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 8px;border-radius:7px;
+  cursor:pointer;transition:all 0.12s;
+  margin-bottom:1px;
+}
+.table-item:hover{background:var(--surface)}
+.table-item.selected{background:var(--lift);border-left:2px solid var(--cyan);padding-left:6px}
+.ti-name{font-size:11px;font-weight:400;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ti-rows{font-size:9px;color:var(--txt3)}
+.grade-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.gd-a{background:var(--mint)}
+.gd-b{background:var(--cyan)}
+.gd-c{background:var(--amber)}
+.gd-d,.gd-f{background:var(--coral)}
+/* ── Content ── */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+/* ── Panels ── */
+.panel{flex:1;overflow-y:auto;padding:28px 32px}
+/* ── Connect Screen ── */
+.connect-screen{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:1;gap:0;position:relative;overflow:hidden;
+}
+.connect-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 40%, rgba(0,212,255,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 70% 60%, rgba(155,109,255,0.05) 0%, transparent 70%);
+}
+.connect-grid{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(120,120,200,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,120,200,0.04) 1px, transparent 1px);
+  background-size:40px 40px;
+}
+.connect-card{
+  position:relative;z-index:2;
+  background:var(--panel);
+  border:1px solid var(--borderhi);
+  border-radius:16px;
+  padding:36px 40px;
+  width:520px;
+  box-shadow:0 0 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,212,255,0.08);
+}
+.connect-hero{
+  text-align:center;margin-bottom:32px;
+}
+.connect-logo-big{
+  width:52px;height:52px;
+  background:linear-gradient(135deg,var(--cyan),var(--violet));
+  border-radius:14px;
+  margin:0 auto 16px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  box-shadow:0 0 40px var(--cyan-glow);
+}
+.connect-title{
+  font-family:var(--serif);
+  font-size:28px;letter-spacing:-0.5px;
+  color:var(--txt);margin-bottom:6px;
+}
+.connect-title em{font-style:italic;color:var(--cyan)}
+.connect-sub{font-size:12px;color:var(--txt2);line-height:1.5}
+.db-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+.db-type-btn{
+  padding:10px 12px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;cursor:pointer;
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:11px;color:var(--txt2);
+  transition:all 0.15s;
+}
+.db-type-btn:hover{border-color:var(--borderhi);color:var(--txt)}
+.db-type-btn.selected{border-color:var(--cyan);background:var(--cyan-dim);color:var(--cyan)}
+.form-group{margin-bottom:14px}
+.form-label{font-size:10px;color:var(--txt2);letter-spacing:0.5px;margin-bottom:5px;display:block}
+.form-input,.form-select{
+  width:100%;background:var(--ink3);border:1px solid var(--border);
+  color:var(--txt);font-family:var(--mono);font-size:12px;
+  padding:9px 12px;border-radius:7px;outline:none;transition:border-color 0.15s;
+}
+.form-input:focus,.form-select:focus{border-color:var(--cyan);box-shadow:0 0 0 2px var(--cyan-dim)}
+.form-input::placeholder{color:var(--txt3)}
+.form-select option{background:var(--surface)}
+.form-row{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+.err-box{color:var(--coral);font-size:11px;margin-bottom:12px;padding:8px 12px;background:var(--coral-dim);border-radius:7px}
+/* ── Dashboard ── */
+.dash-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.stat-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:18px 20px;
+  transition:border-color 0.2s;
+  position:relative;overflow:hidden;
+}
+.stat-card::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--stat-color,var(--cyan)),transparent);
+  opacity:0.6;
+}
+.stat-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt3);margin-bottom:10px}
+.stat-val{font-family:var(--sans);font-size:30px;font-weight:700;line-height:1;margin-bottom:4px}
+.stat-sub{font-size:10px;color:var(--txt2)}
+/* ── Section headers ── */
+.sec-h{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;
+}
+.sec-title{
+  font-family:var(--serif);
+  font-size:16px;font-style:italic;
+  color:var(--txt);
+}
+.sec-title b{font-style:normal;font-family:var(--sans);font-weight:600}
+/* ── Data table ── */
+.dt-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin-bottom:20px}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--ink3)}
+th{padding:9px 14px;text-align:left;font-size:9px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--txt3);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--ink3)}
+/* ── Quality heatmap ── */
+.heat-grid{display:grid;gap:3px;margin-bottom:20px}
+.heat-cell{
+  border-radius:4px;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:500;cursor:pointer;
+  transition:transform 0.1s,filter 0.1s;
+  position:relative;
+}
+.heat-cell:hover{transform:scale(1.05);filter:brightness(1.2);z-index:2}
+/* ── Lineage graph ── */
+#lineage-svg{width:100%;height:100%}
+.lineage-node{cursor:pointer}
+.lineage-node circle{transition:r 0.2s,filter 0.2s}
+.lineage-node text{pointer-events:none;font-family:var(--mono)}
+.lineage-node:hover circle{filter:brightness(1.4)}
+.link{stroke:rgba(120,120,200,0.25);stroke-width:1.5;fill:none;marker-end:url(#arrow)}
+.link.highlighted{stroke:var(--cyan);stroke-width:2;opacity:1}
+/* ── AI Summary box ── */
+.ai-box{
+  background:linear-gradient(135deg,var(--ink3),var(--panel));
+  border:1px solid var(--border);
+  border-left:3px solid var(--cyan);
+  border-radius:10px;padding:16px 20px;margin-bottom:20px;
+  position:relative;overflow:hidden;
+}
+.ai-box::before{
+  content:'';position:absolute;top:-20px;right:-20px;
+  width:80px;height:80px;
+  background:radial-gradient(var(--cyan-dim),transparent);
+  border-radius:50%;pointer-events:none;
+}
+.ai-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--cyan);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.ai-label::before{content:'✦';font-size:8px}
+.ai-text{font-size:13px;line-height:1.65;color:var(--txt)}
+/* ── Tags ── */
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.tag{font-size:9px;padding:2px 7px;border-radius:3px;background:var(--lift);color:var(--txt2);border:1px solid var(--border)}
+/* ── Completeness bar ── */
+.cbar-wrap{height:3px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden}
+.cbar-fill{height:100%;border-radius:2px;transition:width 0.6s ease}
+/* ── Chat ── */
+.chat-layout{display:flex;flex-direction:column;height:100%}
+.chat-body{flex:1;overflow-y:auto;padding:20px 28px;display:flex;flex-direction:column;gap:14px}
+.chat-body::-webkit-scrollbar{width:3px}
+.msg{max-width:82%;animation:msgIn 0.18s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg-u{align-self:flex-end}
+.msg-a{align-self:flex-start}
+.bubble{padding:12px 16px;border-radius:12px;line-height:1.65;font-size:13px}
+.msg-u .bubble{background:linear-gradient(135deg,var(--cyan),#0099cc);color:var(--ink);font-weight:500;border-bottom-right-radius:3px}
+.msg-a .bubble{background:var(--panel);border:1px solid var(--border);color:var(--txt);border-bottom-left-radius:3px}
+.msg-meta{font-size:9px;color:var(--txt3);margin-top:4px;padding:0 4px}
+.msg-u .msg-meta{text-align:right}
+.sql-out{
+  background:var(--ink);border:1px solid var(--borderhi);
+  border-radius:8px;padding:12px 14px;margin-top:10px;
+  font-family:var(--mono);font-size:11px;white-space:pre-wrap;
+  color:#7dd3fc;overflow-x:auto;
+}
+.sql-run-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  margin-top:6px;font-size:10px;
+  background:var(--cyan-dim);color:var(--cyan);
+  border:1px solid rgba(0,212,255,0.2);border-radius:5px;
+  padding:4px 10px;cursor:pointer;transition:all 0.15s;font-family:var(--mono);
+}
+.sql-run-btn:hover{background:var(--cyan-dim);filter:brightness(1.2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{
+  font-size:10px;padding:4px 10px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;cursor:pointer;color:var(--txt2);
+  transition:all 0.15s;
+}
+.chip:hover{border-color:var(--cyan);color:var(--cyan);background:var(--cyan-dim)}
+.chat-starters{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:560px;width:100%}
+.starter{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;
+  cursor:pointer;font-size:11px;color:var(--txt2);line-height:1.45;
+  transition:all 0.15s;
+}
+.starter:hover{border-color:var(--cyan);color:var(--txt);background:var(--cyan-dim)}
+.chat-empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:18px;padding:40px;
+}
+.chat-empty-title{font-family:var(--serif);font-size:22px;font-style:italic;color:var(--txt2)}
+.chat-input-row{
+  padding:14px 28px;background:var(--panel);
+  border-top:1px solid var(--border);
+  display:flex;gap:10px;align-items:flex-end;
+}
+.chat-ta{
+  flex:1;background:var(--ink3);border:1px solid var(--border);
+  border-radius:10px;color:var(--txt);font-family:var(--mono);font-size:13px;
+  padding:10px 14px;resize:none;outline:none;
+  min-height:42px;max-height:120px;line-height:1.5;
+  transition:border-color 0.15s;
+}
+.chat-ta:focus{border-color:var(--cyan);box-shadow:0 0 0 2px var(--cyan-dim)}
+.chat-ta::placeholder{color:var(--txt3)}
+.typing-dots span{animation:dot 1.2s infinite;display:inline-block;font-size:18px}
+.typing-dots span:nth-child(2){animation-delay:0.2s}
+.typing-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes dot{0%,80%,100%{opacity:0.1}40%{opacity:1}}
+/* ── SQL Runner ── */
+.sql-runner{display:flex;flex-direction:column;height:100%;gap:0}
+.sql-editor-area{padding:20px 28px;border-bottom:1px solid var(--border)}
+.sql-editor{
+  background:var(--ink);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;
+}
+.sql-editor-header{
+  background:var(--ink3);padding:8px 14px;
+  display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid var(--border);
+  font-size:10px;color:var(--txt3);letter-spacing:1px;text-transform:uppercase;
+}
+.sql-ta{
+  width:100%;background:transparent;border:none;
+  color:#7dd3fc;font-family:var(--mono);font-size:13px;
+  padding:14px 16px;resize:none;outline:none;line-height:1.7;
+  min-height:120px;
+}
+.sql-results{flex:1;overflow:auto;padding:20px 28px}
+.result-meta{
+  display:flex;align-items:center;gap:12px;
+  margin-bottom:14px;font-size:11px;color:var(--txt2);
+}
+.result-pill{
+  padding:3px 8px;border-radius:4px;font-size:10px;font-weight:500;
+}
+.pill-green{background:var(--mint-dim);color:var(--mint)}
+.pill-red{background:var(--coral-dim);color:var(--coral)}
+.pill-gray{background:var(--lift);color:var(--txt2)}
+/* ── Export ── */
+.export-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.export-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:24px;cursor:pointer;
+  transition:all 0.2s;
+}
+.export-card:hover{border-color:var(--borderhi);background:var(--surface);transform:translateY(-1px)}
+.export-icon{font-size:32px;margin-bottom:12px}
+.export-title{font-family:var(--sans);font-size:15px;font-weight:600;margin-bottom:6px}
+.export-desc{font-size:11px;color:var(--txt2);line-height:1.5;margin-bottom:14px}
+/* ── Lineage container ── */
+.lineage-container{
+  flex:1;position:relative;
+  background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;
+}
+.lineage-legend{
+  position:absolute;bottom:14px;left:14px;z-index:5;
+  background:var(--panel);opacity:0.96;backdrop-filter:blur(8px);
+  border:1px solid var(--border);border-radius:8px;padding:10px 14px;
+  font-size:10px;
+}
+.legend-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.legend-row:last-child{margin-bottom:0}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+.lineage-controls{
+  position:absolute;top:14px;right:14px;z-index:5;
+  display:flex;flex-direction:column;gap:6px;
+}
+.icon-btn{
+  width:30px;height:30px;border-radius:6px;
+  background:var(--panel);opacity:0.92;backdrop-filter:blur(8px);
+  border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:13px;color:var(--txt2);
+  transition:all 0.15s;
+}
+.icon-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+/* ── Tooltip ── */
+.tooltip{
+  position:fixed;z-index:999;
+  background:var(--panel);border:1px solid var(--borderhi);
+  border-radius:8px;padding:10px 14px;
+  font-size:11px;color:var(--txt);max-width:240px;
+  pointer-events:none;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+/* ── Animations ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes countUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeUp 0.3s ease both}
+/* ── Pills / badges ── */
+.badge{
+  font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;
+  letter-spacing:0.5px;
+}
+.badge-cyan{background:var(--cyan-dim);color:var(--cyan)}
+.badge-mint{background:var(--mint-dim);color:var(--mint)}
+.badge-amber{background:var(--amber-dim);color:var(--amber)}
+.badge-coral{background:var(--coral-dim);color:var(--coral)}
+.badge-violet{background:var(--violet-dim);color:var(--violet)}
+.pk-pill{font-size:9px;font-weight:600;background:var(--cyan-dim);color:var(--cyan);padding:1px 5px;border-radius:3px;margin-left:4px}
+/* ── Search overlay ── */
+.search-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(5,5,14,0.85);backdrop-filter:blur(8px);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding-top:80px;
+}
+[data-theme="light"] .search-overlay{background:rgba(200,204,228,0.88);}
+.search-modal{
+  width:580px;background:var(--panel);border:1px solid var(--borderhi);
+  border-radius:14px;overflow:hidden;
+  box-shadow:0 30px 80px rgba(0,0,0,0.6);
+  animation:fadeUp 0.2s ease;
+}
+.search-modal-input{
+  width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);
+  color:var(--txt);font-family:var(--mono);font-size:14px;
+  padding:16px 20px;outline:none;
+}
+.search-result-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 20px;cursor:pointer;transition:background 0.1s;
+  border-bottom:1px solid var(--border);
+}
+.search-result-item:hover{background:var(--surface)}
+.sr-score-bar{width:3px;border-radius:2px;background:var(--cyan);flex-shrink:0;align-self:stretch}
+.sr-table{font-size:12px;font-weight:500;color:var(--cyan);margin-bottom:3px}
+.sr-matches{font-size:10px;color:var(--txt2)}
+.schema-diff-badge{
+  position:absolute;top:8px;right:8px;
+  background:var(--coral-dim);color:var(--coral);
+  border:1px solid rgba(255,95,126,0.3);
+  border-radius:4px;font-size:9px;font-weight:600;
+  padding:2px 6px;
+}
+/* ── Markdown ── */
+.md h1,.md h2,.md h3{font-family:var(--sans);font-weight:600;margin:10px 0 5px}
+.md p{margin-bottom:8px;line-height:1.65}
+.md code{font-family:var(--mono);background:var(--surface);padding:1px 5px;border-radius:3px;font-size:11px;color:#7dd3fc}
+.md pre code{display:block;padding:10px 12px;white-space:pre-wrap}
+.md pre{background:var(--ink);border:1px solid var(--border);border-radius:7px;margin:8px 0;overflow:auto}
+.md ul,.md ol{padding-left:18px;margin-bottom:8px}
+.md li{margin-bottom:3px}
+.md strong{color:var(--txt)}
+/* ── Inline spark ── */
+.spark{display:inline-block;vertical-align:middle}
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:500;
+  background:var(--panel);border:1px solid var(--borderhi);
+  border-radius:10px;padding:12px 18px;
+  font-size:12px;box-shadow:0 10px 40px rgba(0,0,0,0.4);
+  animation:slideUp 0.2s ease;
+  display:flex;align-items:center;gap:8px;
+}
+@keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+.toast.success{border-left:3px solid var(--mint)}
+.toast.error{border-left:3px solid var(--coral)}
+.toast.info{border-left:3px solid var(--cyan)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,useMemo} = React;
+const API = 'http://localhost:8000';
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n === null || n === undefined) return '—';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
+  return n.toLocaleString();
+}
+function gradeColor(g) {
+  if (!g) return 'var(--txt3)';
+  if (g.startsWith('A')) return 'var(--mint)';
+  if (g.startsWith('B')) return 'var(--cyan)';
+  if (g.startsWith('C')) return 'var(--amber)';
+  return 'var(--coral)';
+}
+function gradeDotClass(g) {
+  if (!g) return '';
+  if (g.startsWith('A')) return 'gd-a';
+  if (g.startsWith('B')) return 'gd-b';
+  if (g.startsWith('C')) return 'gd-c';
+  return 'gd-d';
+}
+function domainColor(d) {
+  const m = {customer_data:'var(--cyan)',transactions:'var(--mint)',product_catalog:'var(--violet)',
+    marketing:'var(--amber)',analytics:'var(--coral)',reference_data:'var(--txt2)',
+    audit_log:'var(--txt3)',configuration:'var(--txt3)'};
+  return m[d] || 'var(--txt3)';
+}
+
+// ── Simple MD renderer ────────────────────────────────────────────────────────
+function MD({src}) {
+  if (!src) return null;
+  const h = src
+    .replace(/```sql\n?([\s\S]*?)```/g,'<pre><code>$1</code></pre>')
+    .replace(/```([\s\S]*?)```/g,'<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
+    .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br/>');
+  return <div className="md" dangerouslySetInnerHTML={{__html:`<p>${h}</p>`}}/>;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function Toast({msg,type}) {
+  if (!msg) return null;
+  const icon = type==='success'?'✓':type==='error'?'✕':'◎';
+  return <div className={`toast ${type}`}><span>{icon}</span>{msg}</div>;
+}
+
+// ── Count-up number ───────────────────────────────────────────────────────────
+function CountUp({target,duration=1200}) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!target) return;
+    const start = Date.now();
+    const t = typeof target === 'string' ? parseFloat(target.replace(/[^\d.]/g,'')) : target;
+    const tick = () => {
+      const p = Math.min((Date.now()-start)/duration,1);
+      const ease = 1 - Math.pow(1-p, 3);
+      setVal(Math.floor(ease * t));
+      if (p < 1) requestAnimationFrame(tick);
+      else setVal(t);
+    };
+    requestAnimationFrame(tick);
+  }, [target]);
+  if (typeof target === 'string') return <span>{fmtNum(val)}{target.replace(/[\d.,]/g,'')}</span>;
+  return <span>{fmtNum(val)}</span>;
+}
+
+// ── D3 Lineage Graph ──────────────────────────────────────────────────────────
+function LineageGraph({nodes, edges, onNodeClick, qualityData, selectedTable}) {
+  const svgRef = useRef(null);
+  const simRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  useEffect(() => {
+    if (!nodes.length || !svgRef.current) return;
+    const container = svgRef.current.parentElement;
+    const W = container.clientWidth;
+    const H = container.clientHeight;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+    // Defs
+    const defs = svg.append('defs');
+    defs.append('marker').attr('id','arrow').attr('viewBox','0 -4 8 8')
+      .attr('refX',18).attr('refY',0).attr('markerWidth',6).attr('markerHeight',6)
+      .attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4')
+      .attr('fill','rgba(120,120,200,0.4)');
+    defs.append('marker').attr('id','arrow-hi').attr('viewBox','0 -4 8 8')
+      .attr('refX',18).attr('refY',0).attr('markerWidth',6).attr('markerHeight',6)
+      .attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4')
+      .attr('fill','var(--cyan)');
+
+    // Glow filter
+    const filt = defs.append('filter').attr('id','glow');
+    filt.append('feGaussianBlur').attr('stdDeviation','3').attr('result','blur');
+    const merge = filt.append('feMerge');
+    merge.append('feMergeNode').attr('in','blur');
+    merge.append('feMergeNode').attr('in','SourceGraphic');
+
+    const g = svg.append('g');
+
+    // Zoom
+    const zoom = d3.zoom().scaleExtent([0.3, 3])
+      .on('zoom', e => g.attr('transform', e.transform));
+    svg.call(zoom);
+
+    // Build graph data
+    const nodeIds = new Set(nodes.map(n => n.id));
+    const links = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map(e => ({...e, source: e.source, target: e.target}));
+
+    // Force simulation
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
+        const s = nodes.find(n => n.id === d.source) || nodes.find(n => n.id === d.source?.id);
+        const t = nodes.find(n => n.id === d.target) || nodes.find(n => n.id === d.target?.id);
+        return 140;
+      }).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(-350))
+      .force('center', d3.forceCenter(W/2, H/2))
+      .force('collide', d3.forceCollide(60));
+    simRef.current = sim;
+
+    // Links
+    const linkSel = g.append('g').selectAll('path.link')
+      .data(links).enter().append('path')
+      .attr('class','link')
+      .attr('marker-end','url(#arrow)')
+      .attr('id', (d,i) => `link-${i}`);
+
+    // Link labels (on hover)
+    const linkLabels = g.append('g').selectAll('text.ll')
+      .data(links).enter().append('text')
+      .attr('class','ll').attr('font-size','8').attr('fill','rgba(120,120,200,0.5)')
+      .attr('text-anchor','middle').attr('dy','-3')
+      .append('textPath').attr('href', (_,i) => `#link-${i}`)
+      .attr('startOffset','50%')
+      .text(d => `${d.source_col || ''} → ${d.target_col || ''}`);
+
+    // Nodes
+    const nodeSel = g.append('g').selectAll('g.lineage-node')
+      .data(nodes).enter().append('g')
+      .attr('class','lineage-node')
+      .call(d3.drag()
+        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+        .on('drag', (e, d) => { d.fx=e.x; d.fy=e.y; })
+        .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+      .on('mouseover', (e, d) => {
+        setTooltip({x: e.clientX+12, y: e.clientY+12, data: d});
+        // Highlight connected links
+        linkSel.attr('marker-end', l =>
+          (l.source.id===d.id||l.target.id===d.id) ? 'url(#arrow-hi)' : 'url(#arrow)')
+          .classed('highlighted', l => l.source.id===d.id||l.target.id===d.id);
+      })
+      .on('mousemove', e => setTooltip(t => t ? {...t, x:e.clientX+12, y:e.clientY+12} : null))
+      .on('mouseout', () => {
+        setTooltip(null);
+        linkSel.attr('marker-end','url(#arrow)').classed('highlighted',false);
+      })
+      .on('click', (_, d) => onNodeClick && onNodeClick(d.id));
+
+    // Node circles
+    nodeSel.append('circle')
+      .attr('r', d => {
+        const base = 20;
+        const rows = d.row_count || 0;
+        return base + Math.min(Math.sqrt(rows/100), 12);
+      })
+      .attr('fill', d => {
+        const q = d.quality_score;
+        if (q >= 90) return 'rgba(0,255,163,0.15)';
+        if (q >= 75) return 'rgba(0,212,255,0.15)';
+        if (q >= 60) return 'rgba(255,176,56,0.15)';
+        if (q !== null && q !== undefined) return 'rgba(255,95,126,0.15)';
+        return 'rgba(120,120,200,0.1)';
+      })
+      .attr('stroke', d => {
+        const q = d.quality_score;
+        if (q >= 90) return 'var(--mint)';
+        if (q >= 75) return 'var(--cyan)';
+        if (q >= 60) return 'var(--amber)';
+        if (q !== null && q !== undefined) return 'var(--coral)';
+        return 'var(--borderhi)';
+      })
+      .attr('stroke-width', d => d.id === selectedTable ? 2.5 : 1.5)
+      .attr('filter', d => d.id === selectedTable ? 'url(#glow)' : null)
+      .style('cursor','pointer');
+
+    // Domain color ring
+    nodeSel.append('circle')
+      .attr('r', d => {
+        const base = 20;
+        return base + Math.min(Math.sqrt((d.row_count||0)/100), 12) + 5;
+      })
+      .attr('fill','none')
+      .attr('stroke', d => domainColor(d.domain))
+      .attr('stroke-width', 0.5)
+      .attr('stroke-dasharray', '3,3')
+      .attr('opacity', 0.3);
+
+    // Issue indicator
+    nodeSel.filter(d => d.issue_count > 0)
+      .append('circle').attr('r',5).attr('cx',16).attr('cy',-16)
+      .attr('fill','var(--coral)').attr('stroke',`var(--ink)`).attr('stroke-width',1.5);
+    nodeSel.filter(d => d.issue_count > 0)
+      .append('text').attr('x',16).attr('y',-12).attr('text-anchor','middle')
+      .attr('font-size','6').attr('fill','white').attr('font-weight','bold')
+      .text(d => d.issue_count > 9 ? '!' : d.issue_count);
+
+    // Node labels
+    nodeSel.append('text')
+      .attr('dy', d => {
+        const r = 20 + Math.min(Math.sqrt((d.row_count||0)/100),12);
+        return r + 14;
+      })
+      .attr('text-anchor','middle')
+      .attr('font-size','10')
+      .attr('fill','var(--txt)')
+      .attr('font-family','DM Mono, monospace')
+      .text(d => d.label.length > 14 ? d.label.slice(0,13)+'…' : d.label);
+
+    // Row count label
+    nodeSel.append('text')
+      .attr('dy', d => {
+        const r = 20 + Math.min(Math.sqrt((d.row_count||0)/100),12);
+        return r + 25;
+      })
+      .attr('text-anchor','middle')
+      .attr('font-size','8')
+      .attr('fill','var(--txt3)')
+      .attr('font-family','DM Mono, monospace')
+      .text(d => d.row_count ? fmtNum(d.row_count) : '');
+
+    // Entry animation
+    nodeSel.attr('opacity',0)
+      .transition().delay((_,i) => i*60).duration(400)
+      .attr('opacity',1);
+    linkSel.attr('opacity',0)
+      .transition().delay(400).duration(600)
+      .attr('opacity',1);
+
+    sim.on('tick', () => {
+      linkSel.attr('d', d => {
+        const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+        const dr = Math.sqrt(dx*dx+dy*dy) * 1.8;
+        return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+      });
+      nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    return () => { sim.stop(); };
+  }, [nodes, edges, selectedTable]);
+
+  return (
+    <>
+      <svg ref={svgRef} id="lineage-svg"/>
+      {tooltip && (
+        <div className="tooltip" style={{left:tooltip.x, top:tooltip.y}}>
+          <div style={{fontWeight:600,color:'var(--cyan)',marginBottom:4}}>{tooltip.data.label}</div>
+          <div style={{color:'var(--txt2)',fontSize:10}}>
+            {fmtNum(tooltip.data.row_count)} rows · {tooltip.data.column_count} cols
+          </div>
+          {tooltip.data.quality_grade && <div style={{color:gradeColor(tooltip.data.quality_grade),fontSize:10,marginTop:2}}>Quality: {tooltip.data.quality_grade} ({tooltip.data.quality_score?.toFixed(0)})</div>}
+          {tooltip.data.domain && <div style={{color:domainColor(tooltip.data.domain),fontSize:10,marginTop:2}}>{tooltip.data.domain.replace(/_/g,' ')}</div>}
+          {tooltip.data.summary && <div style={{color:'var(--txt2)',fontSize:10,marginTop:4,lineHeight:1.4,maxWidth:200}}>{tooltip.data.summary.slice(0,100)}…</div>}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Connect Screen ────────────────────────────────────────────────────────────
+function ConnectScreen({onConnect}) {
+  const [dbType, setDbType] = useState('sqlite');
+  const [fp, setFp] = useState('C:\\Users\\Mayank Jindal\\github\\datalens\\demo\\olist_enterprise.db');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
+  const [db, setDb] = useState('');
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const dbTypes = [
+    {id:'sqlite', label:'SQLite', icon:'🗄'},
+    {id:'postgresql', label:'PostgreSQL', icon:'🐘'},
+    {id:'snowflake', label:'Snowflake', icon:'❄️'},
+    {id:'sqlserver', label:'SQL Server', icon:'🪟'},
+  ];
+
+  async function go() {
+    setLoading(true); setErr('');
+    try {
+      const body = {db_type: dbType};
+      if (dbType==='sqlite') body.file_path=fp;
+      else {body.host=host;body.port=parseInt(port)||5432;body.database=db;body.username=user;body.password=pass;}
+      const r = await fetch(`${API}/connect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail||'Connection failed');
+      onConnect(d);
+    } catch(e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="connect-screen">
+      <div className="connect-bg"/>
+      <div className="connect-grid"/>
+      <div className="connect-card fade-in">
+        <div className="connect-hero">
+          <div className="connect-logo-big">◎</div>
+          <div className="connect-title">Connect to your <em>database</em></div>
+          <div className="connect-sub">Automatically extract metadata · Analyze quality · Generate AI documentation</div>
+        </div>
+        <div className="db-type-grid">
+          {dbTypes.map(t => (
+            <div key={t.id} className={`db-type-btn ${dbType===t.id?'selected':''}`} onClick={() => setDbType(t.id)}>
+              <span>{t.icon}</span>{t.label}
+            </div>
+          ))}
+        </div>
+        {dbType==='sqlite' ? (
+          <div className="form-group">
+            <label className="form-label">SQLite File Path</label>
+            <input className="form-input" value={fp} onChange={e=>setFp(e.target.value)} placeholder="C:\Users\Mayank Jindal\github\datalens\demo\olist_enterprise.db"/>
+          </div>
+        ) : (
+          <>
+            <div className="form-row" style={{gridTemplateColumns:'2fr 1fr'}}>
+              <div className="form-group"><label className="form-label">Host</label><input className="form-input" value={host} onChange={e=>setHost(e.target.value)} placeholder="localhost"/></div>
+              <div className="form-group"><label className="form-label">Port</label><input className="form-input" value={port} onChange={e=>setPort(e.target.value)} placeholder="5432"/></div>
+            </div>
+            <div className="form-group"><label className="form-label">Database</label><input className="form-input" value={db} onChange={e=>setDb(e.target.value)}/></div>
+            <div className="form-row" style={{gridTemplateColumns:'1fr 1fr'}}>
+              <div className="form-group"><label className="form-label">Username</label><input className="form-input" value={user} onChange={e=>setUser(e.target.value)}/></div>
+              <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" value={pass} onChange={e=>setPass(e.target.value)}/></div>
+            </div>
+          </>
+        )}
+        {err && <div className="err-box">{err}</div>}
+        <button className="btn btn-cyan" style={{width:'100%',justifyContent:'center',padding:'12px'}} onClick={go} disabled={loading}>
+          {loading ? '⟳ Connecting & Extracting Schema…' : '→ Connect & Analyze'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Overview / Dashboard ──────────────────────────────────────────────────────
+function OverviewPanel({session, tables, onAction, toast}) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [diffResult, setDiffResult] = useState(null);
+  const ov = session.quality_overview || {};
+
+  async function runQuality() {
+    setAnalyzing(true);
+    try {
+      const r = await fetch(`${API}/analyze-quality/${session.session_id}`,{method:'POST'});
+      const d = await r.json();
+      onAction('quality_done', d);
+      toast('Quality analysis complete for all tables ✓', 'success');
+    } catch(e) { toast('Analysis failed: '+e.message,'error'); }
+    finally { setAnalyzing(false); }
+  }
+
+  async function runEnrich() {
+    setEnriching(true);
+    try {
+      const r = await fetch(`${API}/enrich`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session.session_id})});
+      const d = await r.json();
+      onAction('enrich_done', d);
+      toast(`AI enrichment complete — ${d.enriched_tables} tables documented ✓`,'success');
+    } catch(e) { toast('Enrichment failed: '+e.message,'error'); }
+    finally { setEnriching(false); }
+  }
+
+  async function checkDiff() {
+    setChecking(true);
+    try {
+      const r = await fetch(`${API}/schema-diff/${session.session_id}`,{method:'POST'});
+      const d = await r.json();
+      setDiffResult(d);
+      toast(d.has_changes ? `⚠ ${d.change_count} schema change(s) detected!`:'Schema unchanged ✓', d.has_changes?'error':'success');
+    } catch(e) { toast('Diff check failed','error'); }
+    finally { setChecking(false); }
+  }
+
+  // Quality heatmap cells
+  const heatData = useMemo(() => {
+    const dims = ['completeness','uniqueness','freshness','pk_health'];
+    return tables.map(t => {
+      const q = t.quality_score;
+      return {name: t.table_name, score: q, grade: t.quality_grade, rows: t.row_count};
+    });
+  }, [tables]);
+
+  const heatColor = (score) => {
+    if (score === null || score === undefined) return 'rgba(120,120,200,0.08)';
+    if (score >= 90) return 'rgba(0,255,163,0.25)';
+    if (score >= 75) return 'rgba(0,212,255,0.2)';
+    if (score >= 60) return 'rgba(255,176,56,0.2)';
+    return 'rgba(255,95,126,0.25)';
+  };
+
+  const enrichedCount = tables.filter(t => t.enriched).length;
+
+  return (
+    <div className="panel fade-in">
+      {/* Action bar */}
+      <div style={{display:'flex',gap:8,marginBottom:24,alignItems:'center',flexWrap:'wrap'}}>
+        <button className="btn btn-ghost btn-sm" onClick={runQuality} disabled={analyzing}>
+          {analyzing ? '⟳ Analyzing…' : '◉ Run Quality Analysis'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={runEnrich} disabled={enriching}>
+          {enriching ? '⟳ Generating…' : '✦ AI Enrich All Tables'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={checkDiff} disabled={checking}>
+          {checking ? '⟳ Checking…' : '↻ Check Schema Changes'}
+        </button>
+        <div style={{marginLeft:'auto',fontSize:10,color:'var(--txt3)'}}>
+          session: <span style={{color:'var(--cyan)'}}>{session.session_id}</span>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="dash-grid">
+        <div className="stat-card" style={{'--stat-color':'var(--cyan)'}}>
+          <div className="stat-label">Tables</div>
+          <div className="stat-val" style={{color:'var(--cyan)'}}><CountUp target={tables.length}/></div>
+          <div className="stat-sub">{session.db_type} · {session.db_name}</div>
+        </div>
+        <div className="stat-card" style={{'--stat-color':'var(--mint)'}}>
+          <div className="stat-label">Total Rows</div>
+          <div className="stat-val" style={{color:'var(--mint)'}}><CountUp target={tables.reduce((s,t)=>s+(t.row_count||0),0)}/></div>
+          <div className="stat-sub">across all tables</div>
+        </div>
+        <div className="stat-card" style={{'--stat-color': ov.database_score>=80?'var(--mint)':ov.database_score>=60?'var(--amber)':'var(--coral)'}}>
+          <div className="stat-label">Quality Score</div>
+          <div className="stat-val" style={{color: ov.database_score>=80?'var(--mint)':ov.database_score>=60?'var(--amber)':'var(--coral)'}}>
+            {ov.database_score !== undefined ? <><CountUp target={Math.floor(ov.database_score)}/><span style={{fontSize:16,fontFamily:'var(--mono)',fontWeight:400}}>/100</span></> : <span style={{color:'var(--txt3)',fontSize:18}}>Run analysis</span>}
+          </div>
+          <div className="stat-sub">{ov.database_grade ? `Grade ${ov.database_grade}` : 'Not yet analyzed'}</div>
+        </div>
+        <div className="stat-card" style={{'--stat-color':'var(--violet)'}}>
+          <div className="stat-label">AI Enriched</div>
+          <div className="stat-val" style={{color:'var(--violet)'}}><CountUp target={enrichedCount}/><span style={{fontSize:16,color:'var(--txt3)',fontWeight:400}}>/{tables.length}</span></div>
+          <div className="stat-sub">tables with AI context</div>
+        </div>
+      </div>
+
+      {/* Schema diff alert */}
+      {diffResult?.has_changes && (
+        <div style={{background:'var(--coral-dim)',border:'1px solid rgba(255,95,126,0.3)',borderRadius:10,padding:'12px 16px',marginBottom:20,fontSize:12}}>
+          <div style={{color:'var(--coral)',fontWeight:600,marginBottom:8}}>⚠ Schema Changes Detected ({diffResult.change_count})</div>
+          {diffResult.changes.map((c,i) => (
+            <div key={i} style={{color:'var(--txt2)',marginBottom:3}}>
+              <span className={`badge badge-${c.severity==='critical'?'coral':c.severity==='high'?'amber':'cyan'}`} style={{marginRight:6}}>{c.type.replace(/_/g,' ')}</span>
+              <code style={{fontSize:11}}>{c.table}{c.column ? `.${c.column}` : ''}</code>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quality issues */}
+      {ov.top_issues?.length > 0 && (
+        <div style={{marginBottom:24}}>
+          <div className="sec-h">
+            <div className="sec-title"><b>Top Quality Issues</b></div>
+            <span className="badge badge-coral">{ov.critical_issues} critical · {ov.high_issues} high</span>
+          </div>
+          <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+            {ov.top_issues.map((iss,i) => {
+              const sc = {critical:'coral',high:'amber',medium:'cyan',low:'mint'};
+              return (
+                <div key={i} style={{display:'flex',gap:10,padding:'10px 14px',borderBottom:'1px solid var(--border)',alignItems:'flex-start'}}>
+                  <span className={`badge badge-${sc[iss.severity]||'cyan'}`} style={{marginTop:1,whiteSpace:'nowrap'}}>{iss.severity}</span>
+                  <div>
+                    <div style={{fontSize:12}}>{iss.message}</div>
+                    <div style={{fontSize:10,color:'var(--txt3)',marginTop:2}}>{iss.table}{iss.column?` › ${iss.column}`:''}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Quality heatmap */}
+      {heatData.some(d => d.score !== null) && (
+        <div style={{marginBottom:24}}>
+          <div className="sec-h">
+            <div className="sec-title"><b>Quality</b> Heatmap</div>
+            <div style={{display:'flex',gap:8,fontSize:10,color:'var(--txt3)'}}>
+              {[['≥90','var(--mint)'],['≥75','var(--cyan)'],['≥60','var(--amber)'],['<60','var(--coral)']].map(([l,c]) => (
+                <span key={l} style={{display:'flex',alignItems:'center',gap:3}}>
+                  <span style={{width:8,height:8,borderRadius:2,background:c,display:'inline-block'}}/>
+                  {l}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${Math.min(heatData.length,8)}, 1fr)`,gap:4}}>
+            {heatData.map(cell => (
+              <div key={cell.name}
+                style={{background:heatColor(cell.score),borderRadius:6,padding:'8px 6px',textAlign:'center',cursor:'pointer',transition:'all 0.15s'}}
+                title={`${cell.name}: ${cell.score?.toFixed(1)||'N/A'}`}
+                onClick={() => onAction('select_table', cell.name)}
+                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'}
+                onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+              >
+                <div style={{fontSize:9,color:'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{cell.name.length>8?cell.name.slice(0,7)+'…':cell.name}</div>
+                <div style={{fontSize:11,fontWeight:600,color:gradeColor(cell.grade)}}>{cell.grade||'?'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Table list */}
+      <div className="sec-h">
+        <div className="sec-title"><b>All Tables</b></div>
+        <span style={{fontSize:10,color:'var(--txt3)'}}>{tables.length} objects</span>
+      </div>
+      <div className="dt-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Rows</th><th>Cols</th><th>Quality</th><th>Domain</th><th>Enriched</th><th>Issues</th></tr></thead>
+          <tbody>
+            {tables.map(t => (
+              <tr key={t.table_name} style={{cursor:'pointer'}} onClick={() => onAction('select_table', t.table_name)}>
+                <td><code style={{color:'var(--cyan)'}}>{t.table_name}</code></td>
+                <td style={{color:'var(--txt2)'}}>{fmtNum(t.row_count)}</td>
+                <td style={{color:'var(--txt2)'}}>{t.column_count||'—'}</td>
+                <td>
+                  {t.quality_score !== undefined && t.quality_score !== null ? (
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <div style={{width:48,height:3,background:'var(--border)',borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:`${t.quality_score}%`,height:'100%',background:gradeColor(t.quality_grade),borderRadius:2}}/>
+                      </div>
+                      <span style={{color:gradeColor(t.quality_grade),fontSize:11,fontWeight:600}}>{t.quality_grade}</span>
+                    </div>
+                  ) : <span style={{color:'var(--txt3)'}}>—</span>}
+                </td>
+                <td>{t.ai_summary?.domain ? <span style={{color:domainColor(t.ai_summary.domain),fontSize:11}}>{t.ai_summary.domain.replace(/_/g,' ')}</span> : <span style={{color:'var(--txt3)'}}>—</span>}</td>
+                <td>{t.enriched ? <span style={{color:'var(--mint)'}}>✓</span> : <span style={{color:'var(--txt3)'}}>—</span>}</td>
+                <td>{t.issue_count > 0 ? <span className="badge badge-coral">{t.issue_count}</span> : <span style={{color:'var(--txt3)'}}>—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Table Detail Panel ────────────────────────────────────────────────────────
+function TableDetailPanel({session, tableName, toast}) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sub, setSub] = useState('columns');
+  const [enriching, setEnriching] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  useEffect(() => {
+    if (!tableName) return;
+    setLoading(true); setDetail(null);
+    fetch(`${API}/table/${session.session_id}/${tableName}`)
+      .then(r=>r.json()).then(d=>{setDetail(d);setLoading(false);}).catch(()=>setLoading(false));
+  }, [tableName, session.session_id]);
+
+  async function enrichThis() {
+    setEnriching(true);
+    try {
+      await fetch(`${API}/enrich`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:session.session_id,table_name:tableName})});
+      const r = await fetch(`${API}/table/${session.session_id}/${tableName}`);
+      setDetail(await r.json());
+      toast(`AI enrichment done for ${tableName} ✓`,'success');
+    } catch(e){toast('Enrichment failed','error');}
+    finally{setEnriching(false);}
+  }
+
+  async function analyzeThis() {
+    setAnalyzing(true);
+    try {
+      const r = await fetch(`${API}/analyze-quality/${session.session_id}?table_name=${tableName}`,{method:'POST'});
+      await r.json();
+      const r2 = await fetch(`${API}/table/${session.session_id}/${tableName}`);
+      setDetail(await r2.json());
+      toast(`Quality analysis done for ${tableName} ✓`,'success');
+    } catch(e){toast('Analysis failed','error');}
+    finally{setAnalyzing(false);}
+  }
+
+  if (!tableName) return (
+    <div className="panel" style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>
+      <div style={{textAlign:'center',color:'var(--txt3)'}}>
+        <div style={{fontSize:40,marginBottom:12,opacity:0.3}}>⊞</div>
+        <div>Select a table from the sidebar</div>
+      </div>
+    </div>
+  );
+  if (loading) return <div className="panel" style={{color:'var(--txt3)',paddingTop:40}}>Loading {tableName}…</div>;
+  if (!detail) return null;
+
+  const ai = detail.ai_summary || {};
+  const quality = detail.quality || {};
+  const colQ = quality.column_metrics || {};
+  const tl = quality.table_level || {};
+
+  return (
+    <div className="panel fade-in">
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',gap:16,marginBottom:20}}>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+            <code style={{fontFamily:'var(--mono)',fontSize:20,fontWeight:500,color:'var(--cyan)'}}>{tableName}</code>
+            {detail.enriched && <span className="badge badge-cyan">✦ AI</span>}
+            {ai.data_sensitivity && <span className="badge badge-violet">{ai.data_sensitivity}</span>}
+            {ai.domain && <span className="badge" style={{background:domainColor(ai.domain)+'22',color:domainColor(ai.domain)}}>{ai.domain.replace(/_/g,' ')}</span>}
+          </div>
+          <div style={{color:'var(--txt2)',fontSize:12}}>
+            {tl.row_count?.toLocaleString() || '—'} rows · {detail.columns?.length} columns
+            {tl.has_primary_key ? <span style={{color:'var(--mint)',marginLeft:8}}>✓ PK defined</span> : <span style={{color:'var(--amber)',marginLeft:8}}>⚠ No PK</span>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {quality.overall_score !== undefined && (
+            <div style={{textAlign:'center',padding:'8px 14px',background:'var(--panel)',border:'1px solid var(--border)',borderRadius:10}}>
+              <div style={{fontFamily:'var(--sans)',fontSize:24,fontWeight:700,color:gradeColor(quality.grade),lineHeight:1}}>{quality.grade}</div>
+              <div style={{fontSize:9,color:'var(--txt3)',marginTop:2}}>{quality.overall_score?.toFixed(0)}/100</div>
+            </div>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={analyzeThis} disabled={analyzing}>{analyzing?'⟳…':'◉ Analyze'}</button>
+          <button className="btn btn-ghost btn-sm" onClick={enrichThis} disabled={enriching}>{enriching?'⟳…':'✦ Enrich'}</button>
+        </div>
+      </div>
+
+      {/* AI Summary */}
+      {ai.business_summary && (
+        <div className="ai-box">
+          <div className="ai-label">AI Business Summary</div>
+          <div className="ai-text">{ai.business_summary}</div>
+          {ai.business_usage?.length > 0 && (
+            <div style={{marginTop:10,fontSize:11,color:'var(--txt2)'}}>
+              <strong style={{color:'var(--txt3)',fontSize:9,letterSpacing:1,textTransform:'uppercase'}}>Common uses · </strong>
+              {ai.business_usage.join(' · ')}
+            </div>
+          )}
+          {ai.tags?.length > 0 && <div className="tags">{ai.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
+        </div>
+      )}
+
+      {/* Sub tabs */}
+      <div style={{display:'flex',gap:0,borderBottom:'1px solid var(--border)',marginBottom:18}}>
+        {['columns','quality','sample','relationships'].map(s => (
+          <div key={s} onClick={() => setSub(s)}
+            style={{padding:'10px 16px',cursor:'pointer',fontSize:12,borderBottom:`2px solid ${sub===s?'var(--cyan)':'transparent'}`,color:sub===s?'var(--cyan)':'var(--txt2)',transition:'all 0.15s'}}>
+            {s.charAt(0).toUpperCase()+s.slice(1)}
+          </div>
+        ))}
+      </div>
+
+      {sub === 'columns' && (
+        <div className="dt-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Completeness</th><th>Distinct</th><th>Range / Values</th><th>AI Description</th></tr></thead>
+            <tbody>
+              {detail.columns?.map((col,i) => {
+                const cq = colQ[col.column_name] || {};
+                const cp = cq.completeness_pct;
+                const fillC = cp>=90?'var(--mint)':cp>=70?'var(--cyan)':cp>=50?'var(--amber)':'var(--coral)';
+                return (
+                  <tr key={col.column_name}>
+                    <td style={{color:'var(--txt3)',fontSize:10}}>{i+1}</td>
+                    <td>
+                      <strong style={{fontFamily:'var(--mono)'}}>{col.column_name}</strong>
+                      {col.is_primary_key && <span className="pk-pill">PK</span>}
+                    </td>
+                    <td><code style={{color:'#7dd3fc',fontSize:11}}>{col.data_type}</code></td>
+                    <td style={{fontSize:11}}>{col.is_nullable?<span style={{color:'var(--txt3)'}}>NULL</span>:<span style={{color:'var(--mint)'}}>NN</span>}</td>
+                    <td style={{minWidth:100}}>
+                      {cp !== undefined ? (
+                        <>
+                          <div style={{fontSize:11,fontWeight:500,color:fillC}}>{cp.toFixed(0)}%</div>
+                          <div className="cbar-wrap"><div className="cbar-fill" style={{width:`${cp}%`,background:fillC}}/></div>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td style={{fontSize:11,color:'var(--txt2)'}}>{cq.distinct_count?.toLocaleString() || '—'}</td>
+                    <td style={{fontSize:10,color:'var(--txt3)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {cq.range_summary || cq.top_values?.slice(0,2).map(v=>v.value).join(', ') || '—'}
+                    </td>
+                    <td style={{fontSize:11,color:'var(--txt2)',maxWidth:180}}>{col.ai_description || <span style={{color:'var(--txt3)'}}>—</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {sub === 'quality' && (
+        <div>
+          {quality.issues?.length > 0 ? (
+            <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',marginBottom:16}}>
+              <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',fontSize:9,color:'var(--txt3)',letterSpacing:1.5,textTransform:'uppercase'}}>Issues</div>
+              {quality.issues.map((iss,i) => {
+                const sc = {critical:'coral',high:'amber',medium:'cyan',low:'mint'};
+                return (
+                  <div key={i} style={{display:'flex',gap:10,padding:'10px 14px',borderBottom:'1px solid var(--border)',alignItems:'flex-start'}}>
+                    <span className={`badge badge-${sc[iss.severity]}`} style={{marginTop:1}}>{iss.severity}</span>
+                    <div>
+                      <div style={{fontSize:12}}>{iss.message}</div>
+                      {iss.column && <div style={{fontSize:10,color:'var(--txt3)',marginTop:2}}>Column: {iss.column}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : quality.overall_score !== undefined ? (
+            <div style={{color:'var(--mint)',padding:'12px 16px',background:'var(--mint-dim)',borderRadius:10,marginBottom:16,fontSize:13}}>✓ No quality issues detected — excellent health!</div>
+          ) : (
+            <div style={{color:'var(--txt3)',marginBottom:16}}>Run quality analysis to see detailed metrics</div>
+          )}
+          {quality.highlights?.length > 0 && (
+            <div>{quality.highlights.map((h,i) => <div key={i} style={{color:'var(--mint)',fontSize:12,marginBottom:3}}>✓ {h}</div>)}</div>
+          )}
+          {ai.potential_issues?.length > 0 && (
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>AI-Identified Concerns</div>
+              {ai.potential_issues.map((p,i) => <div key={i} style={{color:'var(--amber)',fontSize:12,marginBottom:4}}>⚠ {p}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {sub === 'sample' && (
+        <div className="dt-wrap">
+          <table>
+            <thead><tr>{detail.columns?.map(c=><th key={c.column_name}>{c.column_name}</th>)}</tr></thead>
+            <tbody>
+              {detail.sample_data?.map((row,i) => (
+                <tr key={i}>{detail.columns?.map(c => (
+                  <td key={c.column_name} style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11}}>
+                    {row[c.column_name]===null ? <span style={{color:'var(--txt3)',fontStyle:'italic'}}>null</span> : String(row[c.column_name])}
+                  </td>
+                ))}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {sub === 'relationships' && (
+        <div>
+          {detail.foreign_keys?.length > 0 ? (
+            <>
+              <div className="sec-h"><div className="sec-title"><b>Foreign Keys</b></div></div>
+              <div className="dt-wrap">
+                <table>
+                  <thead><tr><th>Column</th><th>→ Table</th><th>→ Column</th><th>On Delete</th></tr></thead>
+                  <tbody>
+                    {detail.foreign_keys.map((fk,i) => (
+                      <tr key={i}>
+                        <td><code style={{color:'var(--cyan)'}}>{fk.column}</code></td>
+                        <td><code style={{color:'var(--amber)'}}>{fk.referenced_table}</code></td>
+                        <td><code style={{color:'var(--txt2)'}}>{fk.referenced_column}</code></td>
+                        <td style={{fontSize:10,color:'var(--txt3)'}}>{fk.on_delete||'NO ACTION'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : <div style={{color:'var(--txt3)',fontSize:12}}>No foreign key relationships</div>}
+          {ai.common_join_patterns?.length > 0 && (
+            <div style={{marginTop:16}}>
+              <div className="sec-h"><div className="sec-title"><b>AI Join Patterns</b></div></div>
+              {ai.common_join_patterns.map((p,i) => (
+                <div key={i} className="sql-out" style={{marginBottom:8}}>{p}</div>
+              ))}
+            </div>
+          )}
+          {detail.indexes?.length > 0 && (
+            <div style={{marginTop:16}}>
+              <div className="sec-h"><div className="sec-title"><b>Indexes</b></div></div>
+              <div className="dt-wrap">
+                <table>
+                  <thead><tr><th>Name</th><th>Unique</th><th>Columns</th></tr></thead>
+                  <tbody>
+                    {detail.indexes.map((idx,i) => (
+                      <tr key={i}>
+                        <td><code style={{fontSize:10}}>{idx.index_name}</code></td>
+                        <td>{idx.is_unique?<span style={{color:'var(--mint)'}}>✓</span>:'—'}</td>
+                        <td style={{fontSize:11}}>{idx.columns?.join(', ')||'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Lineage Panel ─────────────────────────────────────────────────────────────
+function LineagePanel({session, onTableSelect, selectedTable}) {
+  const [lineage, setLineage] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/lineage/${session.session_id}`)
+      .then(r=>r.json()).then(d=>{setLineage(d);setLoading(false);})
+      .catch(()=>setLoading(false));
+  }, [session.session_id]);
+
+  const domainGroups = useMemo(() => {
+    if (!lineage) return {};
+    const g = {};
+    lineage.nodes.forEach(n => { (g[n.domain] = g[n.domain]||[]).push(n); });
+    return g;
+  }, [lineage]);
+
+  if (loading) return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--txt3)'}}>Loading lineage graph…</div>;
+  if (!lineage) return null;
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}}>
+      {/* Controls row */}
+      <div style={{padding:'12px 20px',borderBottom:'1px solid var(--border)',display:'flex',gap:8,alignItems:'center'}}>
+        <div style={{fontSize:13,fontFamily:'var(--serif)',fontStyle:'italic',color:'var(--txt2)'}}>
+          <b style={{fontStyle:'normal',fontFamily:'var(--sans)'}}>{lineage.nodes.length}</b> tables · <b style={{fontStyle:'normal',fontFamily:'var(--sans)'}}>{lineage.edges.length}</b> relationships
+        </div>
+        <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
+          {Object.entries(domainGroups).map(([domain, nodes]) => (
+            <span key={domain} style={{fontSize:9,padding:'2px 7px',borderRadius:3,background:domainColor(domain)+'18',color:domainColor(domain),border:`1px solid ${domainColor(domain)}33`}}>
+              {domain.replace(/_/g,' ')} ({nodes.length})
+            </span>
+          ))}
+        </div>
+      </div>
+      {/* Graph */}
+      <div className="lineage-container" style={{flex:1,margin:16,borderRadius:12}}>
+        {lineage.nodes.length > 0 && (
+          <LineageGraph nodes={lineage.nodes.map(n=>({...n}))} edges={lineage.edges}
+            onNodeClick={id => { onTableSelect(id); }}
+            selectedTable={selectedTable}/>
+        )}
+        {/* Legend */}
+        <div className="lineage-legend">
+          <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1,textTransform:'uppercase',marginBottom:6}}>Quality</div>
+          {[['≥90','var(--mint)'],['≥75','var(--cyan)'],['≥60','var(--amber)'],['<60','var(--coral)'],['N/A','var(--borderhi)']].map(([l,c]) => (
+            <div key={l} className="legend-row">
+              <div className="legend-dot" style={{background:c}}/>
+              <span style={{fontSize:10,color:'var(--txt2)'}}>{l}</span>
+            </div>
+          ))}
+          <div style={{marginTop:8,fontSize:9,color:'var(--txt3)',borderTop:'1px solid var(--border)',paddingTop:6}}>⚠ Red dot = has issues</div>
+          <div style={{fontSize:9,color:'var(--txt3)',marginTop:2}}>Dashed ring = domain</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Chat Panel ────────────────────────────────────────────────────────────────
+function ChatPanel({session, onRunSQL}) {
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  const starters = [
+    "What are the most important tables in this database?",
+    "Write a query to find top 10 customers by lifetime value",
+    "Which tables have the worst data quality issues?",
+    "How are orders and customers related? Show me a join query",
+    "What does the marketing_campaigns table track?",
+    "Find all tables that reference the products table"
+  ];
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs]);
+
+  async function send(text) {
+    const m = text || input.trim();
+    if (!m) return;
+    setInput('');
+    setMsgs(prev => [...prev, {role:'user',content:m,ts:new Date()}]);
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session.session_id,message:m})});
+      const d = await r.json();
+      setMsgs(prev => [...prev, {role:'assistant',data:d.response,ts:new Date()}]);
+    } catch(e) {
+      setMsgs(prev => [...prev, {role:'assistant',data:{answer:'Backend connection error. Ensure FastAPI is running at localhost:8000'},ts:new Date()}]);
+    } finally { setLoading(false); }
+  }
+
+  function onKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} }
+
+  return (
+    <div className="chat-layout">
+      <div className="chat-body">
+        {msgs.length === 0 && !loading && (
+          <div className="chat-empty">
+            <div style={{fontSize:38,opacity:0.2}}>◎</div>
+            <div className="chat-empty-title">Ask anything about your <em>data</em></div>
+            <div style={{fontSize:11,color:'var(--txt3)',marginBottom:4}}>{session.db_name} · {session.table_count || '?'} tables · natural language interface</div>
+            <div className="chat-starters">
+              {starters.map((s,i) => <div key={i} className="starter" onClick={()=>send(s)}>{s}</div>)}
+            </div>
+          </div>
+        )}
+        {msgs.map((msg,i) => (
+          <div key={i} className={`msg ${msg.role==='user'?'msg-u':'msg-a'}`}>
+            {msg.role==='user' ? (
+              <>
+                <div className="bubble">{msg.content}</div>
+                <div className="msg-meta">{msg.ts.toLocaleTimeString()}</div>
+              </>
+            ) : (
+              <>
+                <div className="bubble">
+                  <MD src={msg.data?.answer}/>
+                  {msg.data?.sql_query && (
+                    <div>
+                      <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1,textTransform:'uppercase',marginTop:12,marginBottom:6}}>Generated SQL</div>
+                      <div className="sql-out">{msg.data.sql_query}</div>
+                      <div className="sql-run-btn" onClick={() => onRunSQL(msg.data.sql_query)}>
+                        ▶ Run in Query Runner
+                      </div>
+                    </div>
+                  )}
+                  {msg.data?.referenced_tables?.length > 0 && (
+                    <div style={{fontSize:10,color:'var(--txt3)',marginTop:8}}>
+                      Tables: {msg.data.referenced_tables.map(t => <code key={t} style={{color:'var(--cyan)',marginRight:4}}>{t}</code>)}
+                    </div>
+                  )}
+                  {msg.data?.follow_up_suggestions?.length > 0 && (
+                    <div className="chips">
+                      {msg.data.follow_up_suggestions.map((s,j) => (
+                        <div key={j} className="chip" onClick={()=>send(s)}>↳ {s}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="msg-meta">
+                  DataLens AI · {msg.ts.toLocaleTimeString()}
+                  {msg.data?.confidence && <span style={{marginLeft:6,opacity:0.5}}>· {msg.data.confidence} confidence</span>}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {loading && (
+          <div className="msg msg-a">
+            <div className="bubble">
+              <div className="typing-dots"><span>·</span><span>·</span><span>·</span></div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+      <div className="chat-input-row">
+        <textarea className="chat-ta" value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={onKey} placeholder="Ask about tables, relationships, write SQL, explore quality… (Enter to send)" rows={1}/>
+        <button className="btn btn-cyan" onClick={()=>send()} disabled={loading||!input.trim()}>↵ Send</button>
+      </div>
+    </div>
+  );
+}
+
+// ── SQL Runner ────────────────────────────────────────────────────────────────
+function SQLRunnerPanel({session, initialSQL}) {
+  const defaultSQL = `-- Try: SELECT * FROM customers LIMIT 10
+SELECT 
+  c.tier,
+  COUNT(*) as customer_count,
+  ROUND(AVG(c.lifetime_value), 2) as avg_ltv,
+  ROUND(SUM(c.lifetime_value), 2) as total_ltv
+FROM customers c
+GROUP BY c.tier
+ORDER BY avg_ltv DESC`;
+
+  const [sql, setSQL] = useState(initialSQL || defaultSQL);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { if (initialSQL) setSQL(initialSQL); }, [initialSQL]);
+
+  async function run() {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/execute-sql`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:session.session_id,sql,limit:200})});
+      setResult(await r.json());
+    } catch(e) { setResult({success:false,error:e.message,rows:[],columns:[]}); }
+    finally { setLoading(false); }
+  }
+
+  function onKey(e) { if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){run();} }
+
+  return (
+    <div className="sql-runner">
+      <div className="sql-editor-area">
+        <div className="sql-editor">
+          <div className="sql-editor-header">
+            <span>SQL Query Runner</span>
+            <span style={{marginLeft:'auto',opacity:0.5}}>Ctrl+Enter to execute</span>
+          </div>
+          <textarea className="sql-ta" value={sql} onChange={e=>setSQL(e.target.value)}
+            onKeyDown={onKey} spellCheck={false} style={{height:140}}/>
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:10,alignItems:'center'}}>
+          <button className="btn btn-cyan btn-sm" onClick={run} disabled={loading}>
+            {loading ? '⟳ Executing…' : '▶ Execute Query'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setSQL(defaultSQL)}>Reset Example</button>
+          {result && (
+            <div className="result-meta" style={{marginBottom:0,marginLeft:8}}>
+              {result.success ? (
+                <>
+                  <span className="result-pill pill-green">{result.row_count} rows</span>
+                  <span className="result-pill pill-gray">{result.duration_ms}ms</span>
+                </>
+              ) : (
+                <span className="result-pill pill-red">Error</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="sql-results">
+        {result?.success === false && (
+          <div style={{color:'var(--coral)',background:'var(--coral-dim)',borderRadius:8,padding:'12px 14px',fontSize:12}}>{result.error}</div>
+        )}
+        {result?.success && result.rows.length === 0 && (
+          <div style={{color:'var(--txt3)',fontSize:12}}>Query returned 0 rows</div>
+        )}
+        {result?.success && result.rows.length > 0 && (
+          <div className="dt-wrap">
+            <table>
+              <thead><tr>{result.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>
+              <tbody>
+                {result.rows.map((row,i) => (
+                  <tr key={i}>{result.columns.map(c => (
+                    <td key={c} style={{fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {row[c]===null ? <span style={{color:'var(--txt3)',fontStyle:'italic'}}>null</span> : String(row[c])}
+                    </td>
+                  ))}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!result && (
+          <div style={{color:'var(--txt3)',fontSize:12,paddingTop:20}}>
+            Run a query to see results. Results are limited to 200 rows for display.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Export Panel ──────────────────────────────────────────────────────────────
+function ExportPanel({session, toast}) {
+  const [loading, setLoading] = useState(null);
+
+  async function doExport(fmt) {
+    setLoading(fmt);
+    try {
+      const r = await fetch(`${API}/export`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:session.session_id,format:fmt})});
+      if (!r.ok) throw new Error((await r.json()).detail);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href=url; a.download=`datalens_dictionary.${fmt==='markdown'?'md':'json'}`;
+      a.click();
+      toast(`${fmt.toUpperCase()} exported successfully!`,'success');
+    } catch(e) { toast(e.message,'error'); }
+    finally { setLoading(null); }
+  }
+
+  return (
+    <div className="panel fade-in">
+      <div style={{fontFamily:'var(--serif)',fontSize:22,fontStyle:'italic',marginBottom:6,color:'var(--txt)'}}>Export <b style={{fontStyle:'normal',fontFamily:'var(--sans)'}}>Documentation</b></div>
+      <div style={{color:'var(--txt2)',fontSize:12,marginBottom:28}}>Generate complete data dictionary artifacts for sharing, wikis, and data catalogs.</div>
+      <div className="export-cards">
+        <div className="export-card" onClick={()=>doExport('markdown')}>
+          <div className="export-icon">📄</div>
+          <div className="export-title">Markdown</div>
+          <div className="export-desc">Human-readable documentation with tables, quality badges, AI descriptions and code blocks. Perfect for GitHub READMEs, Confluence, and team wikis.</div>
+          <button className="btn btn-ghost btn-sm" disabled={loading==='markdown'}>{loading==='markdown'?'⟳ Generating…':'↓ Download .md'}</button>
+        </div>
+        <div className="export-card" onClick={()=>doExport('json')}>
+          <div className="export-icon">🔢</div>
+          <div className="export-title">JSON Catalog</div>
+          <div className="export-desc">Structured machine-readable format with full metadata, column statistics, AI enrichment, quality scores. Ideal for data catalog integrations and tooling.</div>
+          <button className="btn btn-ghost btn-sm" disabled={loading==='json'}>{loading==='json'?'⟳ Generating…':'↓ Download .json'}</button>
+        </div>
+      </div>
+      <div style={{fontFamily:'var(--sans)',fontSize:14,fontWeight:600,marginBottom:12}}>Included in every export</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+        {[
+          '✓ Complete schema metadata','✓ AI-generated business summaries',
+          '✓ Column-level AI descriptions','✓ Quality scores (A+–F graded)',
+          '✓ Statistical analysis (min/max/avg/σ)','✓ Completeness & uniqueness metrics',
+          '✓ Foreign key relationships','✓ Index definitions',
+          '✓ Sample data previews','✓ Issue list with severity ratings',
+          '✓ Business usage recommendations','✓ Data sensitivity tags'
+        ].map((item,i) => <div key={i} style={{fontSize:11,color:'var(--txt2)',padding:'5px 0'}}>{item}</div>)}
+      </div>
+    </div>
+  );
+}
+
+// ── Search Overlay ────────────────────────────────────────────────────────────
+function SearchOverlay({session, onClose, onSelect}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (!q.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/search`,{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({session_id:session.session_id,query:q})});
+        const d = await r.json();
+        setResults(d.results || []);
+      } catch(e) {}
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  function onKey(e) { if(e.key==='Escape') onClose(); }
+
+  return (
+    <div className="search-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="search-modal" onKeyDown={onKey}>
+        <input ref={inputRef} className="search-modal-input" value={q} onChange={e=>setQ(e.target.value)}
+          placeholder="Search tables, columns, descriptions, tags…"/>
+        {results.length === 0 && q && <div style={{padding:'20px',color:'var(--txt3)',fontSize:12,textAlign:'center'}}>No results for "{q}"</div>}
+        {results.length === 0 && !q && <div style={{padding:'20px',color:'var(--txt3)',fontSize:12,textAlign:'center'}}>Start typing to search across your entire schema…</div>}
+        {results.map((res,i) => (
+          <div key={i} className="search-result-item" onClick={()=>{onSelect(res.table_name);onClose();}}>
+            <div className="sr-score-bar" style={{height:'100%'}}/>
+            <div style={{flex:1}}>
+              <div className="sr-table">{res.table_name}</div>
+              <div className="sr-matches">
+                {res.matches.map((m,j) => <span key={j} style={{marginRight:8,color:'var(--txt2)'}}>
+                  <span style={{color:'var(--txt3)',fontSize:9,textTransform:'uppercase',letterSpacing:0.5}}>{m.type}: </span>
+                  {m.text.slice(0,60)}{m.text.length>60?'…':''}
+                </span>)}
+              </div>
+            </div>
+            <div style={{fontSize:10,color:'var(--txt3)'}}>{fmtNum(res.row_count)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── App Root ──────────────────────────────────────────────────────────────────
+function App() {
+  const [session, setSession] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [runSQL, setRunSQL] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [searchQ, setSearchQ] = useState('');
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  function showToast(msg, type='info') {
+    setToast({msg, type});
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function refreshTables(sid) {
+    const r = await fetch(`${API}/tables/${sid}`);
+    const d = await r.json();
+    setTables(d.tables || []);
+    if (session) setSession(prev => ({...prev, quality_overview: d.quality_overview || prev.quality_overview}));
+  }
+
+  function handleConnect(data) {
+    setSession(data);
+    setTables(data.tables || []);
+    setActiveTab('overview');
+    showToast(`Connected to ${data.db_name} — ${data.table_count} tables found`, 'success');
+  }
+
+  function handleAction(action, payload) {
+    if (action === 'select_table') { setSelectedTable(payload); setActiveTab('table'); }
+    if (action === 'quality_done') refreshTables(session.session_id);
+    if (action === 'enrich_done') refreshTables(session.session_id);
+  }
+
+  function handleRunSQL(sql) {
+    setRunSQL(sql);
+    setActiveTab('sql');
+  }
+
+  useEffect(() => {
+    const handler = (e) => { if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); setSearchOpen(true); } };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const navItems = session ? [
+    {id:'overview', label:'Overview', icon:'◫'},
+    {id:'lineage', label:'Lineage Graph', icon:'⬡'},
+    {id:'table', label:'Table Detail', icon:'⊞'},
+    {id:'chat', label:'AI Chat', icon:'◎'},
+    {id:'sql', label:'Query Runner', icon:'▶'},
+    {id:'export', label:'Export Docs', icon:'↓'},
+  ] : [];
+
+  const gradeDotCls = (g) => {
+    if (!g) return '';
+    if (g.startsWith('A')) return 'gd-a';
+    if (g.startsWith('B')) return 'gd-b';
+    if (g.startsWith('C')) return 'gd-c';
+    return 'gd-d';
+  };
+
+  return (
+    <div className="app">
+      {/* Topbar */}
+      <div className="topbar">
+        <div className="topbar-logo">
+          <div className="logo-mark">◎</div>
+          <div className="logo-text">Data<em>Lens</em></div>
+        </div>
+        {session && (
+          <div className="topbar-db">
+            <div className="db-pill">
+              <span>{session.db_type}</span>
+              <span style={{color:'var(--txt)'}}>{session.db_name}</span>
+            </div>
+            <span style={{fontSize:10,color:'var(--txt3)'}}>{tables.length} tables</span>
+          </div>
+        )}
+        {session && (
+          <div className="search-bar">
+            <div className="search-wrap">
+              <span className="search-icon">⌕</span>
+              <input className="search-input" placeholder="Search schema… ⌘K" readOnly
+                onClick={() => setSearchOpen(true)} style={{cursor:'pointer'}}/>
+            </div>
+          </div>
+        )}
+        <div className="topbar-right">
+          <div className="status-indicator">
+            <div className={`dot ${session ? 'dot-green' : 'dot-gray'}`}/>
+            <span>{session ? 'Connected' : 'Not connected'}</span>
+          </div>
+          <div className="theme-toggle" onClick={() => setIsDark(d => !d)} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <span className="theme-toggle-icon icon-sun">☀</span>
+            <div className="theme-toggle-thumb"/>
+            <span className="theme-toggle-icon icon-moon">☾</span>
+          </div>
+          {session && (
+            <button className="btn btn-ghost btn-sm" onClick={() => { setSession(null); setTables([]); setSelectedTable(null); showToast('Disconnected','info'); }}>
+              Disconnect
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!session ? (
+        <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+          <ConnectScreen onConnect={handleConnect}/>
+        </div>
+      ) : (
+        <div className="main">
+          {/* Sidebar */}
+          <div className="sidebar">
+            <div className="nav-section">
+              <div className="nav-label">Navigation</div>
+              {navItems.map(item => (
+                <div key={item.id} className={`nav-item ${activeTab===item.id?'active':''}`} onClick={() => setActiveTab(item.id)}>
+                  <span className="nav-icon">{item.icon}</span>
+                  {item.label}
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'0 12px 8px',borderTop:'1px solid var(--border)',marginTop:4}}>
+              <div className="nav-label" style={{marginTop:12}}>Tables</div>
+            </div>
+            <div className="tables-section">
+              {tables.map(t => (
+                <div key={t.table_name}
+                  className={`table-item ${selectedTable===t.table_name?'selected':''}`}
+                  onClick={() => { setSelectedTable(t.table_name); setActiveTab('table'); }}>
+                  <div className={`grade-dot ${gradeDotCls(t.quality_grade)}`}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div className="ti-name">{t.table_name}</div>
+                    <div className="ti-rows">{fmtNum(t.row_count)}</div>
+                  </div>
+                  {t.issue_count > 0 && <span className="nav-badge">{t.issue_count}</span>}
+                  {t.enriched && <span className="nav-badge green">✦</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="content">
+            {activeTab === 'overview' && (
+              <OverviewPanel session={session} tables={tables} onAction={handleAction} toast={showToast}/>
+            )}
+            {activeTab === 'lineage' && (
+              <LineagePanel session={session} onTableSelect={id=>{setSelectedTable(id);setActiveTab('table');}} selectedTable={selectedTable}/>
+            )}
+            {activeTab === 'table' && (
+              <TableDetailPanel session={session} tableName={selectedTable} toast={showToast}/>
+            )}
+            {activeTab === 'chat' && (
+              <ChatPanel session={session} onRunSQL={handleRunSQL}/>
+            )}
+            {activeTab === 'sql' && (
+              <SQLRunnerPanel session={session} initialSQL={runSQL}/>
+            )}
+            {activeTab === 'export' && (
+              <ExportPanel session={session} toast={showToast}/>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Search Overlay */}
+      {searchOpen && session && (
+        <SearchOverlay session={session} onClose={() => setSearchOpen(false)}
+          onSelect={name => { setSelectedTable(name); setActiveTab('table'); }}/>
+      )}
+
+      {/* Toast */}
+      {toast && <Toast msg={toast.msg} type={toast.type}/>}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById('root'));
+</script>
+</body>
+</html>
