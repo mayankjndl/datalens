@@ -1171,6 +1171,201 @@ function OverviewPanel({session, tables, onAction, toast}) {
 }
 
 // ── Table Detail Panel ────────────────────────────────────────────────────────
+function SampleDataTab({session, tableName, columns}) {
+  const [rows, setRows]       = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState('');
+
+  useEffect(() => {
+    if (!tableName) return;
+    setLoading(true); setRows(null); setErr('');
+    fetch(`${API}/execute-sql`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        session_id: session.session_id,
+        sql: `SELECT * FROM "${tableName}" LIMIT 20`,
+        limit: 20
+      })
+    })
+      .then(r => r.json())
+      .then(d => { setRows(d.rows || []); setLoading(false); })
+      .catch(() => { setErr('Failed to load sample data'); setLoading(false); });
+  }, [tableName]);
+
+  if (loading) return (
+    <div style={{padding:'32px 0',textAlign:'center',color:'var(--txt3)'}}>
+      <div style={{marginBottom:8,fontSize:20}}>⟳</div>Loading 20 rows…
+    </div>
+  );
+  if (err) return <div style={{color:'var(--coral)',padding:16}}>{err}</div>;
+  if (!rows) return null;
+  if (rows.length === 0) return <div style={{color:'var(--txt3)',padding:16}}>No rows found in this table.</div>;
+
+  const cols = columns || Object.keys(rows[0]);
+
+  return (
+    <div>
+      <div style={{marginBottom:10,fontSize:10,color:'var(--txt3)'}}>
+        Showing {rows.length} rows · read-only preview
+      </div>
+      <div className="dt-wrap">
+        <table>
+          <thead>
+            <tr>{cols.map(c => (
+              <th key={typeof c === 'string' ? c : c.column_name}>
+                {typeof c === 'string' ? c : c.column_name}
+              </th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {cols.map(c => {
+                  const key = typeof c === 'string' ? c : c.column_name;
+                  const val = row[key];
+                  return (
+                    <td key={key} style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11}}
+                      title={val === null ? 'NULL' : String(val)}>
+                      {val === null
+                        ? <span style={{color:'var(--txt3)',fontStyle:'italic'}}>null</span>
+                        : String(val).length > 30 ? String(val).slice(0,30)+'…' : String(val)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function IssueRow({iss}) {
+  const [open, setOpen] = useState(false);
+  const sevColor = {critical:'var(--coral)',high:'var(--amber)',medium:'var(--amber)',low:'var(--cyan)'}[iss.severity] || 'var(--txt2)';
+  return (
+    <div style={{borderBottom:'1px solid rgba(255,95,126,0.12)'}}>
+      <div style={{padding:'10px 16px',cursor:iss.fix?'pointer':'default'}} onClick={() => iss.fix && setOpen(o=>!o)}>
+        <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4}}>
+          <span style={{width:6,height:6,borderRadius:'50%',background:sevColor,flexShrink:0,display:'inline-block'}}/>
+          <span style={{fontSize:9,fontWeight:700,color:sevColor,textTransform:'uppercase',letterSpacing:0.8}}>{iss.severity}</span>
+          {iss.column && <code style={{fontSize:9,color:'var(--txt3)',background:'var(--ink3)',padding:'1px 5px',borderRadius:3}}>{iss.column}</code>}
+          {iss.fix && <span style={{marginLeft:'auto',fontSize:9,color:'var(--txt3)'}}>{open?'▲':'▼'}</span>}
+        </div>
+        <div style={{fontSize:12,color:'var(--txt)',lineHeight:1.5}}>{iss.message}</div>
+      </div>
+      {iss.fix && open && (
+        <div style={{padding:'0 16px 12px'}}>
+          <pre style={{background:'var(--ink)',border:'1px solid var(--border)',borderRadius:7,padding:'10px 12px',fontSize:10,color:'#7dd3fc',whiteSpace:'pre-wrap',fontFamily:'var(--mono)',lineHeight:1.6,margin:0}}>{iss.fix}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniRelationshipGraph({tableName, foreignKeys, onTableClick}) {
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    if (!svgRef.current || !foreignKeys?.length) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+
+    const W = svgRef.current.clientWidth || 500;
+    const H = 220;
+    svg.attr('width', W).attr('height', H);
+
+    // Build unique nodes and links
+    const nodeSet = new Set([tableName]);
+    foreignKeys.forEach(fk => nodeSet.add(fk.referenced_table));
+    const nodes = Array.from(nodeSet).map(id => ({id, isCurrent: id === tableName}));
+    const links = foreignKeys.map(fk => ({
+      source: tableName,
+      target: fk.referenced_table,
+      fromCol: fk.column,
+      toCol: fk.referenced_column,
+    }));
+
+    // Defs: arrow marker
+    const defs = svg.append('defs');
+    defs.append('marker').attr('id','mini-arrow').attr('viewBox','0 -4 8 8')
+      .attr('refX',20).attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill','rgba(0,212,255,0.7)');
+
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d=>d.id).distance(140))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(W/2, H/2))
+      .force('x', d3.forceX(W/2).strength(0.08))
+      .force('y', d3.forceY(H/2).strength(0.12));
+
+    const link = svg.append('g').selectAll('line').data(links).join('line')
+      .attr('stroke','rgba(0,212,255,0.5)').attr('stroke-width',1.5)
+      .attr('marker-end','url(#mini-arrow)');
+
+    // Link labels
+    const linkLabel = svg.append('g').selectAll('text').data(links).join('text')
+      .attr('fill','rgba(120,180,255,0.7)').attr('font-size',9).attr('font-family','DM Mono, monospace')
+      .attr('text-anchor','middle').text(d=>`${d.fromCol} → ${d.toCol}`);
+
+    const node = svg.append('g').selectAll('g').data(nodes).join('g')
+      .style('cursor','pointer')
+      .call(d3.drag()
+        .on('start',(e,d)=>{if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
+        .on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y;})
+        .on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null;}))
+      .on('click',(_,d)=>{ if(!d.isCurrent && onTableClick) onTableClick(d.id); });
+
+    node.append('rect')
+      .attr('rx',8).attr('ry',8)
+      .attr('width',130).attr('height',36)
+      .attr('x',-65).attr('y',-18)
+      .attr('fill', d => d.isCurrent ? 'rgba(0,212,255,0.15)' : 'rgba(155,109,255,0.1)')
+      .attr('stroke', d => d.isCurrent ? 'var(--cyan)' : 'rgba(155,109,255,0.6)')
+      .attr('stroke-width', d => d.isCurrent ? 1.5 : 1);
+
+    node.append('text')
+      .attr('text-anchor','middle').attr('dy','0.35em')
+      .attr('font-size',11).attr('font-family','DM Mono, monospace')
+      .attr('fill', d => d.isCurrent ? '#00d4ff' : '#9b6dff')
+      .attr('font-weight', d => d.isCurrent ? 600 : 400)
+      .text(d => d.id.length > 16 ? d.id.slice(0,15)+'…' : d.id);
+
+    // Current table label
+    node.filter(d=>d.isCurrent).append('text')
+      .attr('text-anchor','middle').attr('dy','1.8em')
+      .attr('font-size',7).attr('fill','rgba(0,212,255,0.5)')
+      .attr('font-family','DM Mono, monospace').text('current');
+
+    sim.on('tick', () => {
+      link
+        .attr('x1',d=>Math.max(70,Math.min(W-70,d.source.x)))
+        .attr('y1',d=>Math.max(25,Math.min(H-25,d.source.y)))
+        .attr('x2',d=>Math.max(70,Math.min(W-70,d.target.x)))
+        .attr('y2',d=>Math.max(25,Math.min(H-25,d.target.y)));
+      linkLabel
+        .attr('x',d=>(Math.max(70,Math.min(W-70,d.source.x))+Math.max(70,Math.min(W-70,d.target.x)))/2)
+        .attr('y',d=>(Math.max(25,Math.min(H-25,d.source.y))+Math.max(25,Math.min(H-25,d.target.y)))/2-6);
+      node.attr('transform',d=>`translate(${Math.max(70,Math.min(W-70,d.x))},${Math.max(25,Math.min(H-25,d.y))})`);
+    });
+
+    return () => sim.stop();
+  }, [tableName, foreignKeys]);
+
+  if (!foreignKeys?.length) return null;
+
+  return (
+    <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',marginBottom:16}}>
+      <div style={{padding:'8px 16px',borderBottom:'1px solid var(--border)',fontSize:9,color:'var(--txt3)',letterSpacing:1.5,textTransform:'uppercase',display:'flex',alignItems:'center',gap:6}}>
+        <span>⬡</span> Relationship Map <span style={{color:'var(--txt3)',fontWeight:400}}>— click a table to navigate</span>
+      </div>
+      <svg ref={svgRef} style={{width:'100%',height:220,display:'block'}}/>
+    </div>
+  );
+}
+
 function TableDetailPanel({session, tableName, toast}) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1319,80 +1514,109 @@ function TableDetailPanel({session, tableName, toast}) {
 
       {sub === 'quality' && (
         <div>
-          {quality.issues?.length > 0 ? (
-            <div style={{background:'var(--panel)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',marginBottom:16}}>
-              <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',fontSize:9,color:'var(--txt3)',letterSpacing:1.5,textTransform:'uppercase'}}>Issues</div>
-              {quality.issues.map((iss,i) => {
-                const sc = {critical:'coral',high:'amber',medium:'cyan',low:'mint'};
-                return (
-                  <div key={i} style={{display:'flex',gap:10,padding:'10px 14px',borderBottom:'1px solid var(--border)',alignItems:'flex-start'}}>
-                    <span className={`badge badge-${sc[iss.severity]}`} style={{marginTop:1}}>{iss.severity}</span>
-                    <div>
-                      <div style={{fontSize:12}}>{iss.message}</div>
-                      {iss.column && <div style={{fontSize:10,color:'var(--txt3)',marginTop:2}}>Column: {iss.column}</div>}
-                    </div>
-                  </div>
-                );
-              })}
+          {/* Side-by-side: Issues (left) + Healthy (right) */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:20}}>
+
+            {/* Issues column */}
+            <div style={{background:'rgba(255,95,126,0.06)',border:'1px solid rgba(255,95,126,0.25)',borderRadius:12,overflow:'hidden'}}>
+              <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(255,95,126,0.2)',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:14}}>⚠</span>
+                <span style={{fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:'uppercase',color:'var(--coral)'}}>
+                  Issues {quality.issues?.length > 0 ? `(${quality.issues.length})` : ''}
+                </span>
+              </div>
+              {quality.issues?.length > 0 ? quality.issues.map((iss,i) => (
+                <IssueRow key={i} iss={iss}/>
+              )) : (
+                <div style={{padding:'20px 16px',color:'var(--txt3)',fontSize:12,textAlign:'center'}}>
+                  {quality.overall_score !== undefined ? 'No issues detected' : 'Run quality analysis first'}
+                </div>
+              )}
             </div>
-          ) : quality.overall_score !== undefined ? (
-            <div style={{color:'var(--mint)',padding:'12px 16px',background:'var(--mint-dim)',borderRadius:10,marginBottom:16,fontSize:13}}>✓ No quality issues detected — excellent health!</div>
-          ) : (
-            <div style={{color:'var(--txt3)',marginBottom:16}}>Run quality analysis to see detailed metrics</div>
-          )}
-          {quality.highlights?.length > 0 && (
-            <div>{quality.highlights.map((h,i) => <div key={i} style={{color:'var(--mint)',fontSize:12,marginBottom:3}}>✓ {h}</div>)}</div>
-          )}
-          {ai.potential_issues?.length > 0 && (
-            <div style={{marginTop:12}}>
-              <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>AI-Identified Concerns</div>
-              {ai.potential_issues.map((p,i) => <div key={i} style={{color:'var(--amber)',fontSize:12,marginBottom:4}}>⚠ {p}</div>)}
+
+            {/* Healthy column */}
+            <div style={{background:'rgba(0,255,163,0.04)',border:'1px solid rgba(0,255,163,0.2)',borderRadius:12,overflow:'hidden'}}>
+              <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(0,255,163,0.15)',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:14}}>✓</span>
+                <span style={{fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:'uppercase',color:'var(--mint)'}}>
+                  Healthy {quality.highlights?.length > 0 ? `(${quality.highlights.length})` : ''}
+                </span>
+              </div>
+              {quality.highlights?.length > 0 ? quality.highlights.map((h,i) => (
+                <div key={i} style={{padding:'10px 16px',borderBottom:'1px solid rgba(0,255,163,0.08)',display:'flex',alignItems:'flex-start',gap:8}}>
+                  <span style={{color:'var(--mint)',fontSize:12,marginTop:1,flexShrink:0}}>✓</span>
+                  <span style={{fontSize:12,color:'var(--txt)',lineHeight:1.5}}>{h}</span>
+                </div>
+              )) : quality.overall_score !== undefined ? (
+                <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{color:'var(--mint)',fontSize:12}}>✓</span>
+                    <span style={{fontSize:12,color:'var(--txt2)'}}>Overall grade <strong style={{color:'var(--mint)'}}>{quality.grade}</strong> — {quality.overall_score?.toFixed(0)}/100</span>
+                  </div>
+                  {!quality.issues?.length && (
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{color:'var(--mint)',fontSize:12}}>✓</span>
+                      <span style={{fontSize:12,color:'var(--txt2)'}}>No quality issues detected</span>
+                    </div>
+                  )}
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{color:'var(--mint)',fontSize:12}}>✓</span>
+                    <span style={{fontSize:12,color:'var(--txt2)'}}>Primary key {quality.table_level?.has_primary_key ? 'defined' : 'not defined'}</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{padding:'20px 16px',color:'var(--txt3)',fontSize:12,textAlign:'center'}}>
+                  {quality.overall_score !== undefined ? 'Run analysis to see highlights' : 'Run quality analysis first'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Below boxes: Expected Behaviour + AI Flagged Concerns */}
+          {(quality.expected_null_concerns?.length > 0 || ai.potential_issues?.length > 0) && (
+            <div style={{paddingTop:14}}>
+              {quality.expected_null_concerns?.length > 0 && (
+                <>
+                  <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1.8,textTransform:'uppercase',marginBottom:10}}>Expected Behaviour</div>
+                  {quality.expected_null_concerns.map((c,i) => (
+                    <div key={i} style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:7}}>
+                      <span style={{color:'var(--txt3)',fontSize:11,marginTop:1,flexShrink:0}}>◦</span>
+                      <span style={{fontSize:12,color:'var(--txt2)',lineHeight:1.5}}>{c}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              {ai.potential_issues?.length > 0 && (
+                <>
+                  <div style={{fontSize:9,color:'var(--txt3)',letterSpacing:1.8,textTransform:'uppercase',marginBottom:10,marginTop:quality.expected_null_concerns?.length>0?14:0}}>AI Flagged Concerns</div>
+                  {ai.potential_issues.map((p,i) => (
+                    <div key={i} style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:7}}>
+                      <span style={{color:'var(--amber)',fontSize:11,marginTop:1,flexShrink:0}}>◦</span>
+                      <span style={{fontSize:12,color:'var(--txt2)',lineHeight:1.5}}>{p}</span>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
       )}
 
       {sub === 'sample' && (
-        <div className="dt-wrap">
-          <table>
-            <thead><tr>{detail.columns?.map(c=><th key={c.column_name}>{c.column_name}</th>)}</tr></thead>
-            <tbody>
-              {detail.sample_data?.map((row,i) => (
-                <tr key={i}>{detail.columns?.map(c => (
-                  <td key={c.column_name} style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11}}>
-                    {row[c.column_name]===null ? <span style={{color:'var(--txt3)',fontStyle:'italic'}}>null</span> : String(row[c.column_name])}
-                  </td>
-                ))}</tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SampleDataTab session={session} tableName={tableName} columns={detail.columns}/>
       )}
 
       {sub === 'relationships' && (
         <div>
           {detail.foreign_keys?.length > 0 ? (
-            <>
-              <div className="sec-h"><div className="sec-title"><b>Foreign Keys</b></div></div>
-              <div className="dt-wrap">
-                <table>
-                  <thead><tr><th>Column</th><th>→ Table</th><th>→ Column</th><th>On Delete</th></tr></thead>
-                  <tbody>
-                    {detail.foreign_keys.map((fk,i) => (
-                      <tr key={i}>
-                        <td><code style={{color:'var(--cyan)'}}>{fk.column}</code></td>
-                        <td><code style={{color:'var(--amber)'}}>{fk.referenced_table}</code></td>
-                        <td><code style={{color:'var(--txt2)'}}>{fk.referenced_column}</code></td>
-                        <td style={{fontSize:10,color:'var(--txt3)'}}>{fk.on_delete||'NO ACTION'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : <div style={{color:'var(--txt3)',fontSize:12}}>No foreign key relationships</div>}
+            <MiniRelationshipGraph
+              tableName={tableName}
+              foreignKeys={detail.foreign_keys}
+              onTableClick={(name) => { toast(`Navigating to ${name}`, 'info'); }}
+            />
+          ) : <div style={{color:'var(--txt3)',fontSize:12,marginBottom:16}}>No foreign key relationships</div>}
           {ai.common_join_patterns?.length > 0 && (
-            <div style={{marginTop:16}}>
+            <div style={{marginTop:4}}>
               <div className="sec-h"><div className="sec-title"><b>AI Join Patterns</b></div></div>
               {ai.common_join_patterns.map((p,i) => (
                 <div key={i} className="sql-out" style={{marginBottom:8}}>{p}</div>
