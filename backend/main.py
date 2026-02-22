@@ -5,9 +5,10 @@ New in v2: SQL execution, lineage API, schema diff, semantic search
 import json, os, re, hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+import shutil, tempfile
 from pydantic import BaseModel
 import uvicorn
 
@@ -82,6 +83,19 @@ def root(): return {"message": "DataLens API v2", "status": "running"}
 
 @app.get("/health")
 def health(): return {"status": "healthy", "sessions": len(_sessions)}
+
+
+@app.post("/upload-db")
+async def upload_db(file: UploadFile = File(...)):
+    """Accept a SQLite .db file upload and save it to a temp location."""
+    if not file.filename.endswith('.db'):
+        raise HTTPException(status_code=400, detail="Only .db files are supported.")
+    upload_dir = "/tmp/datalens_uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    dest = os.path.join(upload_dir, file.filename)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"file_path": dest, "filename": file.filename, "size_bytes": os.path.getsize(dest)}
 
 
 @app.post("/connect")
