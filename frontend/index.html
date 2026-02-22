@@ -607,7 +607,7 @@ tbody tr:hover td{background:var(--ink3)}
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo} = React;
-const API = window.DATALENS_API_URL || 'http://localhost:8000';
+const API = 'https://datalens-backend-urb4.onrender.com';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function fmtNum(n) {
@@ -2226,3 +2226,4 @@ ReactDOM.render(<App/>, document.getElementById('root'));
 </script>
 </body>
 </html>
+
