@@ -1,3 +1,7 @@
-python-multipart
-uvicorn
 fastapi
+uvicorn
+python-multipart
+pydantic
+groq
+psycopg2-binary
+python-dotenv
