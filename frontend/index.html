@@ -607,7 +607,7 @@ tbody tr:hover td{background:var(--ink3)}
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo} = React;
-const API = 'http://localhost:8000';
+const API = window.DATALENS_API_URL || 'http://localhost:8000';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function fmtNum(n) {
@@ -888,7 +888,10 @@ function LineageGraph({nodes, edges, onNodeClick, qualityData, selectedTable}) {
 // ── Connect Screen ────────────────────────────────────────────────────────────
 function ConnectScreen({onConnect}) {
   const [dbType, setDbType] = useState('sqlite');
-  const [fp, setFp] = useState('C:\\Users\\Mayank Jindal\\github\\datalens\\demo\\olist_enterprise.db');
+  const [fp, setFp] = useState('');
+  const [uploadedFilename, setUploadedFilename] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef(null);
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [db, setDb] = useState('');
@@ -905,6 +908,7 @@ function ConnectScreen({onConnect}) {
   ];
 
   async function go() {
+    if (dbType==='sqlite' && !fp) { setErr('Please upload a .db file first.'); return; }
     setLoading(true); setErr('');
     try {
       const body = {db_type: dbType};
@@ -937,8 +941,29 @@ function ConnectScreen({onConnect}) {
         </div>
         {dbType==='sqlite' ? (
           <div className="form-group">
-            <label className="form-label">SQLite File Path</label>
-            <input className="form-input" value={fp} onChange={e=>setFp(e.target.value)} placeholder="C:\Users\Mayank Jindal\github\datalens\demo\olist_enterprise.db"/>
+            <label className="form-label">SQLite Database File</label>
+            <input type="file" accept=".db" ref={fileInputRef} style={{display:'none'}} onChange={async (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+              setUploading(true); setErr('');
+              try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const r = await fetch(`${API}/upload-db`, {method:'POST', body:fd});
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || 'Upload failed');
+                setFp(d.file_path);
+                setUploadedFilename(d.filename);
+              } catch(e) { setErr(e.message); }
+              finally { setUploading(false); }
+            }}/>
+            <div style={{display:'flex',gap:'10px',alignItems:'center'}}>
+              <button className="btn btn-ghost" style={{whiteSpace:'nowrap'}} onClick={() => fileInputRef.current.click()} disabled={uploading}>
+                {uploading ? '⟳ Uploading…' : '📂 Choose .db file'}
+              </button>
+              {uploadedFilename && <span style={{color:'var(--cyan)',fontSize:'13px'}}>✓ {uploadedFilename}</span>}
+              {!uploadedFilename && <span style={{color:'var(--txt2)',fontSize:'12px'}}>No file selected</span>}
+            </div>
           </div>
         ) : (
           <>
@@ -1737,7 +1762,7 @@ function ChatPanel({session, onRunSQL}) {
       const d = await r.json();
       setMsgs(prev => [...prev, {role:'assistant',data:d.response,ts:new Date()}]);
     } catch(e) {
-      setMsgs(prev => [...prev, {role:'assistant',data:{answer:'Backend connection error. Ensure FastAPI is running at localhost:8000'},ts:new Date()}]);
+      setMsgs(prev => [...prev, {role:'assistant',data:{answer:'Backend connection error. Check your connection and try again.'},ts:new Date()}]);
     } finally { setLoading(false); }
   }
 
